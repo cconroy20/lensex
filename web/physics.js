@@ -15,9 +15,13 @@
              that the singular model has kappa = 1/(2 sqrt(q x^2 + y^2/q)) and
              an Einstein radius near 1 at any q.  q = 1, s = 0 is the SIS.
      plus an external shear psi = (g1 (x^2 - y^2) + 2 g2 x y) / 2, available to both,
-     plus any number of subhalos: pseudo-Jaffe clumps (Dalal & Kochanek 2002, Sect. 3)
+     plus any number of subhalos, either
+       pseudo-Jaffe clumps (Dalal & Kochanek 2002, Sect. 3): rho ~ r^-2 (r^2 + a^2)^-1,
              kappa = (b/2) [1/r - 1/sqrt(r^2 + a^2)], total mass pi b a Sigma_crit,
-             with b their Einstein-radius scale and a their truncation radius.
+             with b their Einstein-radius scale and a their truncation radius; or
+       truncated NFW clumps (Baltz, Marshall & Oguri 2009, appendix A, n = 1):
+             rho ~ 1/[x (1+x)^2] tau^2/(tau^2 + x^2), x = r/r_s, tau = r_t/r_s,
+             with closed-form projected mass, surface density and potential.
 */
 (function (root) {
 "use strict";
@@ -26,7 +30,11 @@
 // z_l = 0.5, z_s = 2, Planck 2018 cosmology (astropy Planck18; see README).
 const SCALE = { thetaE_arcsec: 1, zl: 0.5, zs: 2, Tstar_days: 86.0557,
                 kpc_per_thetaE: 6.2910, Mpoint_Msun: 2.5159e11, sigmaSIS_kms: 233.99,
-                sigmaCrit_Msun_pc2: 2023.5 };
+                sigmaCrit_Msun_pc2: 2023.5,
+                // for the NFW clumps: rho_crit(z_l) and h of Planck 2018 (astropy), and the
+                // Duffy et al. (2008, Table 1: NFW, full sample, z = 0-2) concentration
+                // c_200 = 5.71 (M_200 / 2e12 h^-1 Msun)^-0.084 (1 + z)^-0.47
+                rhoCrit_Msun_kpc3: 220.9606, h: 0.6766, duffy: [5.71, -0.084, -0.47, 2e12] };
 
 // ------------------------------------------------------------------ the lens
 // p = { model: "point" | "iso", s, q, pa (rad), g, gpa (rad), subs: [{x, y, b, a}] }
@@ -36,7 +44,7 @@ function makeLens(p) {
   L.cp = Math.cos(L.pa); L.sp = Math.sin(L.pa);
   L.b = 1 / Math.sqrt(L.q);
   L.e = Math.sqrt(Math.max(0, 1 - L.q * L.q));
-  L.subs = (p.subs || []).map(c => ({ x: c.x, y: c.y, b: c.b, a: c.a }));
+  L.subs = (p.subs || []).map(c => Object.assign({}, c));
   L.mainSingular = L.model === "point" || L.s === 0;
   L.singular = L.mainSingular || L.subs.length > 0;
   return L;
@@ -113,6 +121,7 @@ function deflectMain(L, x, y, out, wantH) {
 // the cancellation in R_a - a = r^2/(R_a + a)).
 function addSubs(L, x, y, out, wantH) {
   for (const c of L.subs) {
+    if (c.prof === "nfw") { addNFW(c, x, y, out, wantH); continue; }
     const dx = x - c.x, dy = y - c.y, r2 = dx * dx + dy * dy;
     const r = Math.sqrt(r2), Ra = Math.sqrt(c.a * c.a + r2);
     const f = c.b * (1 / r - 1 / (Ra + c.a));             // alpha_r / r
@@ -131,6 +140,7 @@ function deflect(L, x, y, out, wantH) {
   return L.subs.length ? addSubs(L, x, y, out, wantH) : out;
 }
 function subPotential(c, x, y) {
+  if (c.prof === "nfw") return c.m0 * nfwP(Math.max(1e-6, Math.hypot(x - c.x, y - c.y) / c.ts), c.tau);
   const dx = x - c.x, dy = y - c.y, r2 = dx * dx + dy * dy, r = Math.sqrt(r2), Ra = Math.sqrt(c.a * c.a + r2);
   return c.b * (r - r2 / (Ra + c.a) + c.a * Math.log((c.a + Ra) / (2 * c.a)));
 }
@@ -153,9 +163,66 @@ function kappa(L, x, y) {
   }
   for (const c of L.subs) {
     const r2 = (x - c.x) ** 2 + (y - c.y) ** 2;
-    k += 0.5 * c.b * (1 / Math.sqrt(r2) - 1 / Math.sqrt(r2 + c.a * c.a));
+    if (c.prof === "nfw") k += Math.PI * c.m0 * nfwSigma(Math.sqrt(r2) / c.ts, c.tau) / (c.ts * c.ts);
+    else k += 0.5 * c.b * (1 / Math.sqrt(r2) - 1 / Math.sqrt(r2 + c.a * c.a));
   }
   return k;
+}
+
+// Truncated NFW (Baltz, Marshall & Oguri 2009, appendix A, n = 1), in x = r/r_s and
+// tau = r_t/r_s.  With M0 the NFW normalization (rho = M0 / [4 pi r (r + r_s)^2] times the
+// truncation factor):
+//   total mass       M = M0 nfwTot(tau)
+//   projected mass   M_proj(x) = M0 nfwMp(x)
+//   surface density  Sigma(x) = (M0 / r_s^2) nfwSigma(x)
+//   potential        integral of M_proj(x)/x dx = nfwP(x) (up to a constant)
+// In lens units (theta_E = 1, masses in units of pi Sigma_crit theta_E^2) a clump carries
+// m0 = M0 / (pi Sigma_crit theta_E^2) and its angular scale radius ts, so that
+//   alpha_r = m0 nfwMp(x) / r,   kappa = pi m0 nfwSigma(x) / ts^2,   psi = m0 nfwP(x).
+function nfwF(x) {                     // arccos(1/x)/sqrt(x^2 - 1), positive branch; F(1) = 1
+  const e = x - 1;
+  if (Math.abs(e) < 1e-5) return 1 - 2 * e / 3;
+  return x > 1 ? Math.acos(1 / x) / Math.sqrt(x * x - 1) : Math.acosh(1 / x) / Math.sqrt(1 - x * x);
+}
+function nfwAcos2(x) {                 // (arccos(1/x))^2, negative of arccosh^2 for x < 1
+  return x >= 1 ? Math.acos(1 / x) ** 2 : -(Math.acosh(1 / x) ** 2);
+}
+const nfwL = (x, t) => Math.log(x / (Math.sqrt(t * t + x * x) + t));
+function nfwTot(t) {
+  const t2 = t * t;
+  return t2 / ((t2 + 1) ** 2) * ((t2 - 1) * Math.log(t) + t * Math.PI - (t2 + 1));
+}
+function nfwMp(x, t) {
+  const t2 = t * t, st = Math.sqrt(t2 + x * x);
+  return t2 / ((t2 + 1) ** 2) * ((t2 + 1 + 2 * (x * x - 1)) * nfwF(x) + t * Math.PI + (t2 - 1) * Math.log(t)
+                                  + st * (-Math.PI + (t2 - 1) / t * nfwL(x, t)));
+}
+function nfwSigma(x, t) {
+  const t2 = t * t, st = Math.sqrt(t2 + x * x), e = x - 1;
+  const g = Math.abs(e) < 1e-4 ? 1 / 3 - 0.4 * e : (1 - nfwF(x)) / (x * x - 1);   // the x -> 1 limit is 1/3
+  return t2 / (2 * Math.PI * (t2 + 1) ** 2) * ((t2 + 1) * g + 2 * nfwF(x) - Math.PI / st + (t2 - 1) * nfwL(x, t) / (t * st));
+}
+function nfwP(x, t) {
+  const t2 = t * t, u = x * x, su = Math.sqrt(t2 + u), Lx = nfwL(x, t), lt = Math.log(t);
+  const br = 2 * t2 * Math.PI * (t - su + t * Math.log(t + su))
+           + 2 * (t2 - 1) * t * su * Lx
+           + t2 * (t2 - 1) * Lx * Lx
+           + 4 * t2 * (u - 1) * nfwF(x)
+           + t2 * (t2 - 1) * nfwAcos2(x)
+           + t2 * ((t2 - 1) * lt - t2 - 1) * Math.log(u)
+           - t2 * ((t2 - 1) * lt * Math.log(4 * t) + 2 * Math.log(t / 2) - 2 * t * (t - Math.PI) * Math.log(2 * t));
+  return br / (2 * (t2 + 1) ** 2);
+}
+function addNFW(c, x, y, out, wantH) {
+  const dx = x - c.x, dy = y - c.y, r = Math.max(1e-9, Math.hypot(dx, dy)), xx = Math.max(1e-6, r / c.ts);
+  const ar = c.m0 * nfwMp(xx, c.tau) / r, f = ar / r;   // alpha_r and alpha_r / r
+  out[0] += f * dx; out[1] += f * dy;
+  if (wantH) {
+    const kap = Math.PI * c.m0 * nfwSigma(xx, c.tau) / (c.ts * c.ts), ap = 2 * kap - f, r2 = r * r;
+    out[2] += (ap * dx * dx + f * dy * dy) / r2;
+    out[3] += (ap * dy * dy + f * dx * dx) / r2;
+    out[4] += (ap - f) * dx * dy / r2;
+  }
 }
 
 // ------------------------------------------------------------------ images
@@ -372,7 +439,7 @@ function criticalCurves(G) {
 function cutCurves(L) {
   const centers = [];
   if (L.model === "iso" && L.s === 0) centers.push([0, 0]);
-  for (const c of L.subs) centers.push([c.x, c.y]);
+  for (const c of L.subs) if (c.prof !== "nfw") centers.push([c.x, c.y]);   // an NFW center deflects nothing
   const o = new Float64Array(5), eps = 1e-9;
   return centers.map(([cx, cy]) => {
     const pts = [];
@@ -389,7 +456,7 @@ function cutCurves(L) {
 function pointA(u) { return (u * u + 2) / (u * Math.sqrt(u * u + 4)); }
 
 const Phys = { SCALE, GR, makeLens, deflect, deflectMain, addSubs, potential, kappa, buildGrid, findImages,
-               describe, criticalCurves, newton, pointA, subDomain };
+               describe, criticalCurves, newton, pointA, subDomain, nfwTot, nfwMp, nfwSigma, nfwP, nfwF };
 if (typeof module !== "undefined" && module.exports) module.exports = Phys;
 else root.Phys = Phys;
 })(typeof window !== "undefined" ? window : globalThis);

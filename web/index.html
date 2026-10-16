@@ -14,7 +14,6 @@
 <header>
   <div class="bar">
     <span class="mark">Lensing Explorer</span>
-    <span class="tag">Drag the source and the subhalos; watch the images respond.</span>
     <button id="reset" class="ghost" type="button" title="Back to the defaults: a cored isothermal lens and a small disk-shaped source just off the lens axis.">Reset</button>
   </div>
 </header>
@@ -35,7 +34,8 @@
 
   <div class="controls">
     <section class="c-lens">
-      <h2 title="The mass distribution of the lens, in units of the Einstein radius. All four models are projected onto the sky (thin-lens approximation).">Lens</h2>
+      <div class="gh"><h2 title="The mass distribution of the lens, in units of the Einstein radius. All four models are projected onto the sky (thin-lens approximation).">Lens</h2>
+        <button id="profBtn" class="ghost" type="button" title="Mass profiles of the four lens models side by side: convergence and enclosed projected mass against radius.">Profiles</button></div>
       <div class="models" role="tablist">
         <button id="mPoint" type="button" title="A point mass (a star, a planet, a black hole). Deflection falls as 1/r, so the lens always forms two images: one outside the Einstein ring and one inside, close to the mass.">Point mass</button>
         <button id="mSIS" type="button" title="Singular isothermal sphere: surface density falling as 1/r, the simplest model of a galaxy (flat rotation curve). The deflection angle is the same at all radii. Two images, or one when the source lies more than one Einstein radius from the axis.">SIS</button>
@@ -67,7 +67,8 @@
     </section>
 
     <section>
-      <h2 title="Dark-matter subhalos in the lens galaxy, each a pseudo-Jaffe clump (Dalal &amp; Kochanek 2002) whose surface density falls as 1/r inside the truncation radius a and as 1/r³ outside, with a = √(b θ_E) set by tides at the Einstein ring. Clumps start at random positions near the Einstein ring, where the images form; drag any clump in the sky panel. Halos along the line of sight at other redshifts act in a similar way and are not modeled.">Subhalos</h2>
+      <div class="gh"><h2 title="Dark-matter subhalos in the lens galaxy, all of one mass. Isothermal: pseudo-Jaffe clumps (Dalal &amp; Kochanek 2002), density ∝ r⁻² inside the truncation radius a and r⁻⁴ outside, with a = √(b θ_E) set by tides at the Einstein ring and a singular center. NFW: truncated NFW clumps (Baltz, Marshall &amp; Oguri 2009), density ∝ r⁻¹ inside the scale radius, with the concentration of a cold-dark-matter halo of the same mass (Duffy et al. 2008, extrapolated) and the same total mass and truncation radius, so only the inner profile differs. Clumps start at random positions near the Einstein ring; drag any clump in the sky panel. Halos along the line of sight at other redshifts act in a similar way and are not modeled.">Subhalos</h2>
+        <span class="seg sm" title="Inner profile of the clumps: isothermal (pseudo-Jaffe) or NFW, at the same mass and truncation radius."><button id="spPJ" type="button">Isothermal</button><button id="spNFW" type="button">NFW</button></span></div>
       <div class="caserow" title="Switch the subhalos on and off to see what they change; Blink alternates the two every 0.75 s. The clumps stay in place, drawn hollow while switched off.">
         <span class="seg sm"><button id="sOn" type="button">On</button><button id="sOff" type="button">Off</button></span>
         <span class="btns"><button id="blink" class="ghost" type="button">Blink</button><button id="reshuffle" class="ghost" type="button" title="New random positions for the clumps (six if there were none).">Reshuffle</button></span>
@@ -85,15 +86,15 @@
 
     <section>
       <h2 title="The background source, drawn in the source plane at the true position. Drag in the source-plane panel to move the source.">Source</h2>
-      <div class="caserow" title="A uniform disk shows most clearly that lensing conserves surface brightness: each image has the color of the source. The galaxy is a smooth exponential disk with three bright knots.">
+      <div class="caserow" title="A point source (a quasar) or a uniform-brightness ellipsoid. The ellipsoid shows most clearly that lensing conserves surface brightness: with a perfect telescope each image has the color of the source.">
         <span>Shape</span>
-        <span class="seg sm"><button id="tPt" type="button" title="A point source, such as a quasar accretion disk, far smaller than any clump: each image is drawn as the telescope's point-spread function with total flux |μ|.">Point</button><button id="tDisk" type="button">Disk</button><button id="tGal" type="button">Galaxy</button></span>
+        <span class="seg sm"><button id="tPt" type="button" title="A point source, such as a quasar accretion disk, far smaller than any clump: each image is drawn as the telescope's point-spread function with total flux |μ|.">Point</button><button id="tDisk" type="button" title="A uniform-brightness ellipsoidal source: a thin disk of radius equal to the Size, tilted by the Inclination.">Ellipsoidal</button></span>
       </div>
       <div class="ctl only-ext" title="Radius of the source, in units of the Einstein radius (and in milliarcseconds for θ_E = 1″). A source larger than a clump's footprint averages over the clump's brightening and dimming, so the flux change shrinks as the source grows.">
         <label for="sR"><span>Size</span><span class="val" id="vR"></span></label>
         <input type="range" id="sR" min="-1.699" max="-0.301" step="0.005">
       </div>
-      <div class="ctl only-ext" title="Tilt of the disk (or galaxy) toward the line of sight: 0° face-on, a circle; 90° edge-on, a thin ellipse of axis ratio 0.1, the thickness of a disk galaxy. The projected axis ratio is √(cos² i + 0.01 sin² i).">
+      <div class="ctl only-ext" title="Tilt of the ellipsoidal source toward the line of sight: 0° face-on, a circle; 90° edge-on, a thin ellipse of axis ratio 0.1, the thickness of a disk galaxy. The projected axis ratio is √(cos² i + 0.01 sin² i).">
         <label for="sInc"><span>Inclination</span><span class="val" id="vInc"></span></label>
         <input type="range" id="sInc" min="0" max="90" step="1">
       </div>
@@ -101,7 +102,6 @@
         <label for="sFW"><span>Telescope resolution</span><span class="val" id="vFW"></span></label>
         <input type="range" id="sFW" min="-2.3" max="0" step="0.02">
       </div>
-      <div class="rd" title="Position of the source center relative to the lens axis, in units of the Einstein radius."><span>Position, <i>β</i></span><b id="vB"></b></div>
     </section>
 
     <section>
@@ -119,6 +119,14 @@
   <p>Thin gravitational lenses in units of the Einstein radius θ<sub>E</sub>. The models are a point mass and the softened isothermal ellipsoid of Keeton &amp; Kochanek (1998), as given in Keeton (2001), plus an external shear. Images of the source center are found by mapping triangles of a polar grid in the sky through the lens equation and refining each candidate with Newton's method; the extended source is drawn by tracing each sky pixel back to the source plane. Time delays assume θ<sub>E</sub> = 1″, a lens at <i>z</i> = 0.5 and a source at <i>z</i> = 2 with the Planck 2018 cosmology, for which one unit of arrival time is 86 days; a point mass with this Einstein radius has 2.5 × 10<sup>11</sup> M<sub>☉</sub>, and a singular isothermal sphere a velocity dispersion of 234 km s<sup>−1</sup>.</p>
   <p class="src">Hover over a panel title, a control or an image marker for an explanation.</p>
 </footer>
+
+<div id="prof" class="modal" hidden>
+  <div class="mbox" role="dialog" aria-label="Mass profiles of the four lens models">
+    <div class="mhead"><h2>Mass profiles</h2><button id="profClose" class="ghost" type="button" title="Close (Esc)">Close</button></div>
+    <canvas id="cvP" aria-label="Convergence and enclosed mass against radius for the four lens models"></canvas>
+    <p class="mnote" id="profNote"></p>
+  </div>
+</div>
 
 <script src="physics.js"></script>
 <script src="app.js"></script>

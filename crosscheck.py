@@ -39,6 +39,14 @@ def lenstronomy_model(spec):
     # subhalos: pseudo-Jaffe = SIS(b) minus the cored isothermal sphere with core a,
     # i.e. NIE(theta_E = -b, s_scale = a) at q = 1
     for sub in spec.get("subs", []):
+        if sub.get("prof") == "nfw":
+            # lenstronomy's TNFW (Baltz, Marshall & Oguri 2009) is parameterized by R_s, r_trunc and
+            # alpha_Rs, the deflection at R_s of the UNTRUNCATED NFW with the same rho_0 ("neglects
+            # the truncation"): M_proj,NFW(1) = M0 (F(1) + ln 1/2) = M0 (1 + ln 1/2) (BMO09)
+            names.append("TNFW")
+            kw.append(dict(Rs=sub["ts"], alpha_Rs=sub["m0"] * (1 + np.log(0.5)) / sub["ts"],
+                           r_trunc=sub["tau"] * sub["ts"], center_x=sub["x"], center_y=sub["y"]))
+            continue
         names += ["SIS", "NIE"]
         kw += [dict(theta_E=sub["b"], center_x=sub["x"], center_y=sub["y"]),
                dict(theta_E=-sub["b"], e1=0.0, e2=0.0, s_scale=sub["a"], center_x=sub["x"], center_y=sub["y"])]
@@ -50,6 +58,14 @@ def lenstronomy_model(spec):
     return LensModel(names), kw
 
 
+def bmo_mp(x, t):
+    """BMO09 projected mass of the truncated NFW in units of M0 (written out here independently)."""
+    F = np.arccos(1 / x) / np.sqrt(x * x - 1) if x > 1 else (np.arccosh(1 / x) / np.sqrt(1 - x * x) if x < 1 else 1.0)
+    L = np.log(x / (np.sqrt(t * t + x * x) + t))
+    return t * t / (t * t + 1) ** 2 * ((t * t + 1 + 2 * (x * x - 1)) * F + t * np.pi + (t * t - 1) * np.log(t)
+                                       + np.sqrt(t * t + x * x) * (-np.pi + (t * t - 1) / t * L))
+
+
 def kappa_js(spec, x, y):
     """physics.js convergence, written out independently here."""
     k = 0.0 * x
@@ -59,6 +75,8 @@ def kappa_js(spec, x, y):
         yl = -np.sin(pa) * x + np.cos(pa) * y
         k = k + 0.5 / np.sqrt(q * s * s + q * xl * xl + yl * yl / q)
     for sub in spec.get("subs", []):     # Dalal & Kochanek (2002) pseudo-Jaffe
+        if sub.get("prof") == "nfw":
+            continue                         # (checked against lenstronomy point by point instead)
         r2 = (x - sub["x"]) ** 2 + (y - sub["y"]) ** 2
         k = k + 0.5 * sub["b"] * (1 / np.sqrt(r2) - 1 / np.sqrt(r2 + sub["a"] ** 2))
     return k
@@ -81,10 +99,26 @@ def sub_from_mass(M, x, y):
     return dict(x=x, y=y, b=b, a=np.sqrt(b))
 
 
+def nfw_from_mass(M, x, y):
+    # the page's recipe (app.js subParams): same mass and truncation radius as the pseudo-Jaffe clump,
+    # r_s from the Duffy et al. (2008) concentration at z_l = 0.5, Planck 2018
+    s = sub_from_mass(M, x, y)
+    r200 = (3 * M / (4 * np.pi * 200 * 220.9606)) ** (1 / 3)
+    c200 = 5.71 * (M * 0.6766 / 2e12) ** -0.084 * 1.5 ** -0.47
+    ts = r200 / c200 / 6.2910
+    tau = s["a"] / ts
+    t2 = tau * tau
+    tot = t2 / (t2 + 1) ** 2 * ((t2 - 1) * np.log(tau) + tau * np.pi - (t2 + 1))
+    s.update(prof="nfw", ts=ts, tau=tau, m0=(M / 2.5159e11) / tot)
+    return s
+
+
 CASES += [
     dict(model="iso", s=0.0, q=0.7, pa=0.4, g=0.08, gpa=2.1,
          subs=[sub_from_mass(1e9, 0.9, 0.5), sub_from_mass(3e9, -0.8, 0.7), sub_from_mass(1e8, 0.1, -1.1)]),
     dict(model="point", subs=[sub_from_mass(1e10, 1.0, 0.2), sub_from_mass(1e9, -0.5, 0.8)]),
+    dict(model="iso", s=0.0, q=0.7, pa=0.4, g=0.08, gpa=2.1,
+         subs=[nfw_from_mass(1e10, 0.9, 0.5), nfw_from_mass(1e9, -0.8, 0.7), nfw_from_mass(1e8, 0.1, -1.1)]),
 ]
 
 out = {"cases": []}
@@ -104,8 +138,11 @@ for spec in CASES:
     # difference of the deflection, good to ~1e-6; its deflection and potential are analytic.
     # A convention slip (axis ratio, orientation, normalization, core) would show up at O(0.1).
     # (absolute: the point mass contributes kappa = 0 away from its center)
-    kerr = np.max(np.abs(kap - kappa_js(spec, x, y)))
-    assert kerr < 1e-4, (spec, kerr)
+    if not any(s.get("prof") == "nfw" for s in spec.get("subs", [])):
+        kerr = np.max(np.abs(kap - kappa_js(spec, x, y)))
+        assert kerr < 1e-4, (spec, kerr)
+    else:
+        kerr = float("nan")
     pts = [dict(x=float(a), y=float(b), ax=float(c), ay=float(d), fxx=float(e), fyy=float(f),
                 fxy=float(g), psi=float(h))
            for a, b, c, d, e, f, g, h in zip(x, y, ax, ay, fxx, fyy, fxy, psi)]

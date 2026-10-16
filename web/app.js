@@ -26,11 +26,11 @@ const FW_DEF = Math.log10(0.05);     // default resolution: 0.05 arcsec FWHM
 function defaults() {
   return { model: "cored", core: 0.1, coreE: 0, q: 0.7, pa: 30, g: 0.08, gpa: 120,
            bx: 0.2, by: 0.08, type: "pt", R: 0.08, inc: 0,
-           crit: true, marks: false, unl: false, mass: false, zs: 1.25,
-           nsub: 0, lm: 9, seed: 1, subs: [], showSubs: true, zi: EI, cix: 0, ciy: 0, son: true, fw: FW_DEF, slog: true };
+           crit: true, marks: false, unl: false, mass: false, zs: 1.25, csx: 0, csy: 0,
+           nsub: 0, sprof: "pj", lm: 9, seed: 1, subs: [], showSubs: true, zi: EI, cix: 0, ciy: 0, son: true, fw: FW_DEF, slog: true };
 }
 let S = defaults();
-const NUMKEYS = ["core", "coreE", "q", "pa", "g", "gpa", "bx", "by", "R", "inc", "zs",
+const NUMKEYS = ["core", "coreE", "q", "pa", "g", "gpa", "bx", "by", "R", "inc", "zs", "csx", "csy",
                  "nsub", "lm", "seed", "zi", "cix", "ciy", "fw"];
 
 function mainSpec() {
@@ -44,13 +44,22 @@ function mainSpec() {
 // Subhalos: pseudo-Jaffe clumps of mass M = pi b a Sigma_crit, tidally truncated at
 // a = sqrt(b b_0) with b_0 = theta_E = 1 (Dalal & Kochanek 2002), so M / M_E = b^(3/2),
 // where M_E = pi Sigma_crit theta_E^2 is the mass inside the Einstein radius.
+// The NFW option keeps the same total mass and the same tidal truncation radius a and gives
+// the clump the scale radius of a CDM halo of that mass: r_s = r_200 / c_200 with c_200 from
+// Duffy et al. (2008), extrapolated below their 1e11 Msun, and M_200 = 200 rho_crit(z_l) 4 pi r_200^3 / 3.
 function subParams() {
-  const b = Math.pow(Math.pow(10, S.lm) / P.SCALE.Mpoint_Msun, 2 / 3);
-  return { b, a: Math.sqrt(b) };
+  const M = Math.pow(10, S.lm), m = M / P.SCALE.Mpoint_Msun, b = Math.pow(m, 2 / 3), a = Math.sqrt(b);
+  const { rhoCrit_Msun_kpc3: rc, h, zl, kpc_per_thetaE: kpc, duffy: [A, B, Cz, Mpiv] } = P.SCALE;
+  const r200 = Math.cbrt(3 * M / (4 * Math.PI * 200 * rc)), c200 = A * Math.pow(M * h / Mpiv, B) * Math.pow(1 + zl, Cz);
+  const ts = r200 / c200 / kpc, tau = a / ts;
+  return { b, a, ts, tau, m0: m / P.nfwTot(tau), c200 };
 }
 function spec() {
   const sp = mainSpec();
-  if (S.nsub > 0) { const { b, a } = subParams(); sp.subs = S.subs.slice(0, S.nsub).map(([x, y]) => ({ x, y, b, a })); }
+  if (S.nsub > 0) {
+    const { b, a, ts, tau, m0 } = subParams(), nfw = S.sprof === "nfw";
+    sp.subs = S.subs.slice(0, S.nsub).map(([x, y]) => (nfw ? { x, y, b, a, prof: "nfw", ts, tau, m0 } : { x, y, b, a }));
+  }
   return sp;
 }
 // clump positions: area-uniform in the annulus 0.5-1.5 theta_E, where the images form;
@@ -96,7 +105,8 @@ function loadHash() {
     else S[k] = decodeURIComponent(v);
   }
   if (!["point", "sis", "cored", "ell"].includes(S.model)) S.model = "cored";
-  if (!["pt", "disk", "gal"].includes(S.type)) S.type = "disk";
+  if (!["pt", "disk"].includes(S.type)) S.type = "disk";      // the galaxy shape (gal) was retired
+  if (!["pj", "nfw"].includes(S.sprof)) S.sprof = "pj";
   S.nsub = clamp(Math.round(S.nsub), 0, 20);
   S.zi = clamp(S.zi, 0.04, EI);
   ensureSubs();
@@ -175,26 +185,14 @@ const DEC = 3;
 const stretch = I => clamp(S.slog ? (I > 0 ? 1 + Math.log10(I) / DEC : 0) : I, 0, 1);
 // ------------------------------------------------------------------ the source
 // brightness 0..1 at offset (dx, dy) from the source center, in theta_E
-// The disk and the galaxy are thin disks seen at inclination S.inc (0 = face-on); the
+// The extended source is a uniform thin disk seen at inclination S.inc (0 = face-on); the
 // projected axis ratio is sqrt(cos^2 i + q0^2 sin^2 i), with an intrinsic thickness q0 = 0.1.
 const Q0 = 0.1;
 function axisRatio() { const c = Math.cos(S.inc * DEG); return Math.sqrt(c * c + Q0 * Q0 * (1 - c * c)); }
 function sourceFn() {
   const R = S.R, w = Math.max(0.006, 0.05 * R), q = axisRatio();
   const soft = d => clamp(d / w + 0.5, 0, 1);
-  if (S.type === "disk") return (dx, dy) => soft(R - Math.sqrt(dx * dx + (dy / q) * (dy / q)));   // major axis horizontal
-  // galaxy: exponential disk with three bright knots, major axis at 29 degrees
-  const ca = Math.cos(0.5), sa = Math.sin(0.5), h = 0.32 * R;
-  const knots = [[0.48, 0.32], [-0.36, 0.76], [0.05, -1.0]].map(([u, v]) => [u * R, v * R * q]);
-  const s2 = 2 * (0.13 * R) * (0.13 * R);
-  return (dx, dy) => {
-    const u = ca * dx + sa * dy, v = -sa * dx + ca * dy;
-    const re = Math.sqrt(u * u + (v / q) * (v / q));
-    if (re > 3.2 * R) return 0;
-    let b = 0.82 * Math.exp(-re / h);
-    for (const [ku, kv] of knots) b += 0.55 * Math.exp(-((u - ku) * (u - ku) + (v - kv) * (v - kv)) / s2);
-    return Math.min(1, b);
-  };
+  return (dx, dy) => soft(R - Math.sqrt(dx * dx + (dy / q) * (dy / q)));   // a uniform ellipse, major axis horizontal
 }
 
 // ------------------------------------------------------------------ lens caches
@@ -456,25 +454,26 @@ let boxS = null;
 // the source center in canvas pixels, and the radius within which the pointer grabs the source
 function srcPx() {
   const b = boxS, E = S.zs;
-  return [b.x0 + (S.bx + E) / (2 * E) * b.side, b.y0 + (E - S.by) / (2 * E) * b.side];
+  return [b.x0 + (S.bx - S.csx + E) / (2 * E) * b.side, b.y0 + (S.csy + E - S.by) / (2 * E) * b.side];
 }
 function srcHitPx() {
-  const ext = isPt() ? 0 : (S.type === "gal" ? 1.3 : 1.05) * S.R;
+  const ext = isPt() ? 0 : 1.05 * S.R;
   return Math.max(12, ext / (2 * S.zs) * boxS.side + 6);
 }
 function drawSource() {
   const cv = $("cvS"), { ctx, w, h, dpr } = fit(cv), b = plotBox(w, h), E = S.zs;
   boxS = b;
   if (b.side < 40) return;
-  const map = (x, y) => [b.x0 + (x + E) / (2 * E) * b.side, b.y0 + (E - y) / (2 * E) * b.side];
+  const cx = S.csx, cy = S.csy;        // the source-plane view: center (cx, cy), half-width E
+  const map = (x, y) => [b.x0 + (x - cx + E) / (2 * E) * b.side, b.y0 + (cy + E - y) / (2 * E) * b.side];
   if (isPt()) { ctx.fillStyle = C.bg; ctx.fillRect(b.x0, b.y0, b.side, b.side); }
   else {
     const N = Math.min(640, Math.round(b.side * dpr)), img = new ImageData(N, N), f = sourceFn();
     const d = 2 * E / N, px = img.data;
     for (let j = 0; j < N; j++) {
-      const y = E - (j + 0.5) * d - S.by;
+      const y = cy + E - (j + 0.5) * d - S.by;
       for (let i = 0; i < N; i++) {
-        const v = stretch(f(-E + (i + 0.5) * d - S.bx, y)), k = 3 * Math.round(v * 255), m = 4 * (j * N + i);
+        const v = stretch(f(cx - E + (i + 0.5) * d - S.bx, y)), k = 3 * Math.round(v * 255), m = 4 * (j * N + i);
         px[m] = LUT_SRC[k]; px[m + 1] = LUT_SRC[k + 1]; px[m + 2] = LUT_SRC[k + 2]; px[m + 3] = 255;
       }
     }
@@ -513,7 +512,7 @@ function drawSource() {
   ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 1.2;
   ctx.beginPath(); ctx.moveTo(lx - 6, ly); ctx.lineTo(lx + 6, ly); ctx.moveTo(lx, ly - 6); ctx.lineTo(lx, ly + 6); ctx.stroke();
   ctx.restore();
-  frameAndTicks(ctx, b, 0, 0, E, "*β*_{x} / *θ*_{E}", "*β*_{y} / *θ*_{E}");
+  frameAndTicks(ctx, b, cx, cy, E, "*β*_{x} / *θ*_{E}", "*β*_{y} / *θ*_{E}");
   $("sSub").innerHTML = E === 1.25 ? "" : `field ±${+E.toFixed(2)} θ<sub>E</sub>`;
 }
 
@@ -616,7 +615,7 @@ function drawSky() {
     for (let j = 0; j < N2; j++) for (let i = 0; i < N2; i++) g[j * N2 + i] = f(cx - E + i * sd - S.bx, cy + E - j * sd - S.by);
     ctx.strokeStyle = C.unl; ctx.lineWidth = 1.2; ctx.setLineDash([4, 4]);
     ctx.beginPath();
-    contour(g, N2, E, S.type === "gal" ? 0.12 : 0.5, seg, cx, cy);
+    contour(g, N2, E, 0.5, seg, cx, cy);
     ctx.stroke(); ctx.setLineDash([]);
   }
   const [lx, ly] = map(0, 0);
@@ -698,23 +697,28 @@ function syncControls() {
   $("sCore").min = S.model === "cored" ? 0.02 : 0;
   const mb = { point: "mPoint", sis: "mSIS", cored: "mCored", ell: "mEll" };
   for (const [m, id] of Object.entries(mb)) $(id).setAttribute("aria-pressed", S.model === m);
-  for (const [t, id] of [["pt", "tPt"], ["disk", "tDisk"], ["gal", "tGal"]]) $(id).setAttribute("aria-pressed", S.type === t);
+  for (const [t, id] of [["pt", "tPt"], ["disk", "tDisk"]]) $(id).setAttribute("aria-pressed", S.type === t);
+  $("spPJ").setAttribute("aria-pressed", S.sprof === "pj"); $("spNFW").setAttribute("aria-pressed", S.sprof === "nfw");
   $("sOn").setAttribute("aria-pressed", S.son); $("sOff").setAttribute("aria-pressed", !S.son);
   $("blink").textContent = blinkTimer ? "Stop" : "Blink";
   $("cCrit").checked = S.crit; $("cMarks").checked = S.marks; $("cUnl").checked = S.unl; $("cMass").checked = S.mass;
-  $("vB").innerHTML = `${pos(S.bx, S.by)}, |β| = ${num(Math.hypot(S.bx, S.by), 2)}`;
   $("sN").value = S.nsub; $("vN").textContent = S.nsub;
   $("sM").value = S.lm; $("vM").innerHTML = num(Math.pow(10, S.lm), 2) + " M<sub>☉</sub>";
   $("cSubs").checked = S.showSubs;
-  const { b, a } = subParams(), mtot = S.nsub * Math.pow(10, S.lm);
+  const { b, a, ts, c200 } = subParams(), mtot = S.nsub * Math.pow(10, S.lm);
   $("readSub").innerHTML = [
-    ["<i>b</i>, <i>a</i>", `${num(1000 * b, 2)} mas, ${num(a, 2)} θ<sub>E</sub>`],
+    S.sprof === "nfw" ? ["<i>r</i><sub>s</sub>, <i>r</i><sub>t</sub>", `${num(ts, 2)}, ${num(a, 2)} θ<sub>E</sub>`]
+                      : ["<i>b</i>, <i>a</i>", `${num(1000 * b, 2)} mas, ${num(a, 2)} θ<sub>E</sub>`],
     ["Total", S.nsub ? `${num(mtot, 2)} M<sub>☉</sub> (${num(100 * mtot / P.SCALE.Mpoint_Msun, 2)}%)` : "—"],
   ].map(([k, v]) => `<div class="rd"><span>${k}</span><b>${v}</b></div>`).join("");
-  $("readSub").children[0].title = "The clump's Einstein radius b (in mas for θ_E = 1″; b = 0.025 θ_E for 10⁹ solar masses) and the tidal truncation radius a = √(b θ_E).";
+  $("readSub").children[0].title = S.sprof === "nfw"
+    ? `NFW scale radius r_s = r_200 / c_200 (c_200 = ${c200.toFixed(1)} for this mass, Duffy et al. 2008) and truncation radius r_t, the same as the isothermal clump's a = √(b θ_E).`
+    : "The clump's Einstein radius b (in mas for θ_E = 1″; b = 0.025 θ_E for 10⁹ solar masses) and the tidal truncation radius a = √(b θ_E).";
   $("readSub").children[1].title = "Total subhalo mass, and as a percentage of the projected mass inside the Einstein radius of the main lens (2.5 × 10^11 Msun for these units).";
 }
 $("sN").addEventListener("input", e => { S.nsub = +e.target.value; ensureSubs(); lensChanged(); });
+$("spPJ").addEventListener("click", () => { S.sprof = "pj"; draft = false; updateLens(); updateImages(); syncControls(); saveHash(); redraw(); });
+$("spNFW").addEventListener("click", () => { S.sprof = "nfw"; draft = false; updateLens(); updateImages(); syncControls(); saveHash(); redraw(); });
 $("sM").addEventListener("input", e => { S.lm = +e.target.value; lensChanged(); });
 $("reshuffle").addEventListener("click", () => {
   S.seed += 1; S.subs = []; if (!S.nsub) S.nsub = 6; ensureSubs();
@@ -728,7 +732,7 @@ for (const id of Object.keys(SL)) {
 }
 for (const [m, id] of [["point", "mPoint"], ["sis", "mSIS"], ["cored", "mCored"], ["ell", "mEll"]])
   $(id).addEventListener("click", () => { S.model = m; draft = false; updateLens(); updateImages(); syncControls(); saveHash(); redraw(); });
-for (const [t, id] of [["pt", "tPt"], ["disk", "tDisk"], ["gal", "tGal"]])
+for (const [t, id] of [["pt", "tPt"], ["disk", "tDisk"]])
   $(id).addEventListener("click", () => {
     S.type = t;
     if (t === "pt" && S.fw <= FW_OFF) S.fw = FW_DEF;        // a point needs a PSF to be seen
@@ -754,13 +758,14 @@ $("reset").addEventListener("click", () => { stopBlink(); S = defaults(); hl = -
 // source plane: drag to move the source, scroll to zoom, double-click to reset the zoom
 function toSource(ev) {
   const r = $("cvS").getBoundingClientRect(), b = boxS, E = S.zs;
-  const x = -E + (ev.clientX - r.left - b.x0) / b.side * 2 * E;
-  const y = E - (ev.clientY - r.top - b.y0) / b.side * 2 * E;
-  return [clamp(x, -E, E), clamp(y, -E, E)];
+  const x = S.csx - E + (ev.clientX - r.left - b.x0) / b.side * 2 * E;
+  const y = S.csy + E - (ev.clientY - r.top - b.y0) / b.side * 2 * E;
+  return [clamp(x, S.csx - E, S.csx + E), clamp(y, S.csy - E, S.csy + E)];
 }
 // The source brightens under the pointer and can be grabbed and moved from where it was
-// taken hold of; a press elsewhere moves the source to the pointer.
-let dragS = false, hoverSrc = false, grab = [0, 0];
+// taken hold of; a press anywhere else pans the view.  Scroll zooms about the pointer and a
+// double-click resets the view.
+let dragS = false, hoverSrc = false, grab = [0, 0], panS = null;
 function onSource(ev) {
   if (!boxS) return false;
   const r = $("cvS").getBoundingClientRect(), [sx, sy] = srcPx();
@@ -768,27 +773,34 @@ function onSource(ev) {
 }
 function setHoverSrc(h) { if (h !== hoverSrc) { hoverSrc = h; redraw(); } }
 $("cvS").addEventListener("pointerdown", ev => {
-  const [x, y] = toSource(ev);
-  grab = onSource(ev) ? [S.bx - x, S.by - y] : [0, 0];
-  dragS = true; $("cvS").setPointerCapture(ev.pointerId); $("cvS").style.cursor = "grabbing"; $("tip").hidden = true;
-  setSource(x + grab[0], y + grab[1]);
+  $("cvS").setPointerCapture(ev.pointerId); $("cvS").style.cursor = "grabbing"; $("tip").hidden = true;
+  if (onSource(ev)) {
+    const [x, y] = toSource(ev);
+    grab = [S.bx - x, S.by - y]; dragS = true;
+  } else panS = { x: ev.clientX, y: ev.clientY, cx: S.csx, cy: S.csy };
 });
 $("cvS").addEventListener("pointermove", ev => {
   if (dragS) { const [x, y] = toSource(ev); setSource(x + grab[0], y + grab[1]); return; }
+  if (panS) {
+    const k = 2 * S.zs / boxS.side;
+    S.csx = +(panS.cx - (ev.clientX - panS.x) * k).toFixed(5); S.csy = +(panS.cy + (ev.clientY - panS.y) * k).toFixed(5);
+    saveHash(); redraw(); return;
+  }
   const h = onSource(ev);
   $("cvS").style.cursor = h ? "grab" : "";
   setHoverSrc(h);
 });
-const endS = () => { if (dragS) { dragS = false; $("cvS").style.cursor = hoverSrc ? "grab" : ""; redraw(); } };
+const endS = () => { if (dragS || panS) { dragS = false; panS = null; $("cvS").style.cursor = hoverSrc ? "grab" : ""; redraw(); } };
 $("cvS").addEventListener("pointerup", endS);
 $("cvS").addEventListener("pointercancel", endS);
 $("cvS").addEventListener("pointerleave", () => { if (!dragS) { setHoverSrc(false); $("tip").hidden = true; } });
 $("cvS").addEventListener("wheel", ev => {
   ev.preventDefault();
-  S.zs = clamp(S.zs * Math.exp(ev.deltaY * 0.0015), 0.25, 2.5);
+  const [x, y] = toSource(ev), E = S.zs, E2 = clamp(E * Math.exp(ev.deltaY * 0.0015), 0.1, 2.5);
+  S.zs = E2; S.csx = +(x - (x - S.csx) * E2 / E).toFixed(5); S.csy = +(y - (y - S.csy) * E2 / E).toFixed(5);
   saveHash(); redraw();
 }, { passive: false });
-$("cvS").addEventListener("dblclick", () => { S.zs = 1.25; saveHash(); redraw(); });
+$("cvS").addEventListener("dblclick", () => { S.zs = 1.25; S.csx = 0; S.csy = 0; saveHash(); redraw(); });
 
 // sky: hover an image marker for its numbers; drag a subhalo; scroll to zoom about the
 // pointer; double-click to reset the view
@@ -820,7 +832,7 @@ function showTip(ev, i) {
   tip.style.top = Math.max(8, ev.clientY - hgt - 10) + "px";
 }
 function setHL(i) { if (i !== hl) { hl = i; redraw(); } }
-let dragSub = -1, hs = -1;
+let dragSub = -1, hs = -1, panI = null;
 function setHS(k) { if (k !== hs) { hs = k; redraw(); } }
 function toSky(ev) {
   const r = $("cvI").getBoundingClientRect(), b = boxI, { cx, cy, E } = view();
@@ -833,14 +845,17 @@ function nearestSub(ev) {
   subsList().forEach((c, k) => { const [qx, qy] = skyToPx(c.x, c.y), d = Math.hypot(qx - mx, qy - my); if (d < bd) { bd = d; best = k; } });
   return best;
 }
-function endSub() { if (dragSub >= 0) { dragSub = -1; draft = false; $("cvI").style.cursor = hs >= 0 ? "grab" : ""; redraw(); } }
+function endSub() {
+  if (dragSub >= 0 || panI) { dragSub = -1; panI = null; draft = false; $("cvI").style.cursor = hs >= 0 ? "grab" : ""; redraw(); }
+}
 {
   const cv = $("cvI");
   cv.addEventListener("pointerdown", ev => {
     const k = nearestSub(ev);
-    if (k < 0) return;
-    dragSub = k; cv.setPointerCapture(ev.pointerId); cv.style.cursor = "grabbing"; $("tip").hidden = true;
-    redraw();
+    cv.setPointerCapture(ev.pointerId); cv.style.cursor = "grabbing"; $("tip").hidden = true;
+    if (k >= 0) { dragSub = k; redraw(); return; }
+    panI = { x: ev.clientX, y: ev.clientY, cx: S.cix, cy: S.ciy };       // empty sky: pan
+    setHL(-1);
   });
   cv.addEventListener("pointermove", ev => {
     if (dragSub >= 0) {
@@ -848,6 +863,12 @@ function endSub() { if (dragSub >= 0) { dragSub = -1; draft = false; $("cvI").st
       S.subs[dragSub] = [+x.toFixed(4), +y.toFixed(4)];
       lensChanged();
       return;
+    }
+    if (panI) {
+      const kk = 2 * S.zi / boxI.side;
+      S.cix = +(panI.cx - (ev.clientX - panI.x) * kk).toFixed(5); S.ciy = +(panI.cy + (ev.clientY - panI.y) * kk).toFixed(5);
+      draft = true; clearTimeout(draftTimer); draftTimer = setTimeout(() => { draft = false; redraw(); }, 220);
+      saveHash(); redraw(); return;
     }
     const k = nearestSub(ev);
     cv.style.cursor = k >= 0 ? "grab" : "";
@@ -870,7 +891,104 @@ function endSub() { if (dragSub >= 0) { dragSub = -1; draft = false; $("cvI").st
   cv.addEventListener("dblclick", () => { S.zi = EI; S.cix = 0; S.ciy = 0; saveHash(); redraw(); });
 }
 
-window.addEventListener("resize", redraw);
+// ------------------------------------------------------------------ mass profiles (pop-up)
+// The four lens models with the current core radius and axis ratio, without shear (an external
+// shear carries no mass): azimuthally averaged convergence, and the projected mass inside a
+// circle of radius R from Gauss's theorem, M(<R)/M_E = (R / 2 pi) times the integral of alpha_r
+// over azimuth, with M_E = pi Sigma_crit theta_E^2.  For the point mass kappa = 0 away from R = 0.
+const PROF_MODELS = [
+  ["Point mass", () => ({ model: "point" }), "#004C8C", []],
+  ["SIS", () => ({ model: "iso", s: 0, q: 1 }), "#B26B00", [7, 4]],
+  ["Cored", () => ({ model: "iso", s: S.core, q: 1 }), "#8E2F6E", [2, 3]],
+  ["Ellipse", () => ({ model: "iso", s: S.coreE, q: S.q, pa: 0 }), "#00897B", [9, 3, 2, 3]],
+];
+function profileOf(spec, Rs) {
+  const L = P.makeLens(spec), o = new Float64Array(5), nph = 180, kap = [], mass = [];
+  const kMaj = Rs.map(R => P.kappa(L, R, 0)), kMin = Rs.map(R => P.kappa(L, 0, R));   // along the axes (pa = 0)
+  for (const R of Rs) {
+    let k = 0, a = 0;
+    for (let j = 0; j < nph; j++) {
+      const ph = 2 * Math.PI * (j + 0.5) / nph, x = R * Math.cos(ph), y = R * Math.sin(ph);
+      k += P.kappa(L, x, y);
+      P.deflectMain(L, x, y, o, false);
+      a += o[0] * Math.cos(ph) + o[1] * Math.sin(ph);
+    }
+    kap.push(k / nph); mass.push(R * a / nph);
+  }
+  return { kap, mass, kMaj, kMin };
+}
+function logAxes(ctx, b, x0, x1, y0, y1, xl, yl) {
+  const X = v => b.x + (Math.log10(v) - x0) / (x1 - x0) * b.w, Y = v => b.y + b.h - (Math.log10(v) - y0) / (y1 - y0) * b.h;
+  ctx.strokeStyle = C.frame; ctx.lineWidth = 1; ctx.strokeRect(b.x - 0.5, b.y - 0.5, b.w + 1, b.h + 1);
+  ctx.fillStyle = C.lab; ctx.font = `13px ${FONT}`;
+  const lab = e => (e === 0 ? "1" : e === 1 ? "10" : e === -1 ? "0.1" : e === -2 ? "0.01" : e === 2 ? "100" : e === -3 ? "0.001" : "1e" + e);
+  for (let e = Math.ceil(x0); e <= x1 + 1e-9; e++) {
+    const px = X(Math.pow(10, e));
+    ctx.beginPath(); ctx.moveTo(px, b.y + b.h); ctx.lineTo(px, b.y + b.h + 5); ctx.stroke();
+    ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText(lab(e), px, b.y + b.h + 7);
+    for (let m = 2; m <= 9 && e < x1; m++) { const q = X(m * Math.pow(10, e)); ctx.beginPath(); ctx.moveTo(q, b.y + b.h); ctx.lineTo(q, b.y + b.h + 3); ctx.stroke(); }
+  }
+  for (let e = Math.ceil(y0); e <= y1 + 1e-9; e++) {
+    const py = Y(Math.pow(10, e));
+    ctx.beginPath(); ctx.moveTo(b.x - 5, py); ctx.lineTo(b.x, py); ctx.stroke();
+    ctx.textAlign = "right"; ctx.textBaseline = "middle"; ctx.fillText(lab(e), b.x - 8, py);
+    for (let m = 2; m <= 9 && e < y1; m++) { const q = Y(m * Math.pow(10, e)); ctx.beginPath(); ctx.moveTo(b.x - 3, q); ctx.lineTo(b.x, q); ctx.stroke(); }
+  }
+  rich(ctx, xl, b.x + b.w / 2, b.y + b.h + 38, "center", 15, C.lab);
+  ctx.save(); ctx.translate(b.x - 44, b.y + b.h / 2); ctx.rotate(-Math.PI / 2); rich(ctx, yl, 0, 0, "center", 15, C.lab); ctx.restore();
+  return { X, Y };
+}
+function drawProfiles() {
+  const cv = $("cvP"), { ctx, w, h } = fit(cv);
+  const Rs = []; for (let k = 0; k <= 160; k++) Rs.push(Math.pow(10, -2 + 3 * k / 160));
+  const prof = PROF_MODELS.map(([name, sp, col, dash]) => ({ name, col, dash, point: sp().model === "point", ...profileOf(sp(), Rs) }));
+  const gap = 90, pw = (w - 2 * 62 - gap) / 2, ph = h - 70;
+  const boxes = [{ x: 62, y: 10, w: pw, h: ph }, { x: 62 + pw + gap, y: 10, w: pw, h: ph }];
+  const panels = [["kap", -2, 1, -3, 2, "*κ* = Σ / Σ_{crit}"], ["mass", -2, 1, -3, 1.5, "*M*(< *R*) / *M*_{E}"]];
+  panels.forEach(([key, x0, x1, y0, y1, yl], p) => {
+    const b = boxes[p], { X, Y } = logAxes(ctx, b, x0, x1, y0, y1, "*R* / *θ*_{E}", yl);
+    ctx.save(); ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h); ctx.clip();
+    ctx.strokeStyle = "#b9b2a6"; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);       // R = theta_E, and kappa = 1 or M = M_E
+    ctx.beginPath(); ctx.moveTo(X(1), b.y); ctx.lineTo(X(1), b.y + b.h); ctx.moveTo(b.x, Y(1)); ctx.lineTo(b.x + b.w, Y(1)); ctx.stroke();
+    ctx.setLineDash([]);
+    if (key === "kap") {                                 // the ellipse: kappa between its minor and major axes
+      const e = prof[3];
+      ctx.fillStyle = "rgba(0,137,123,0.16)"; ctx.beginPath();
+      Rs.forEach((R, k) => { k ? ctx.lineTo(X(R), Y(e.kMaj[k])) : ctx.moveTo(X(R), Y(e.kMaj[k])); });
+      for (let k = Rs.length - 1; k >= 0; k--) ctx.lineTo(X(Rs[k]), Y(e.kMin[k]));
+      ctx.closePath(); ctx.fill();
+    }
+    for (const m of prof) {
+      if (key === "kap" && m.point) continue;          // a point mass: all of the mass at R = 0
+      const ys = m[key], cur = PROF_MODELS.findIndex(q => q[0] === m.name) === ["point", "sis", "cored", "ell"].indexOf(S.model);
+      ctx.strokeStyle = m.col; ctx.lineWidth = cur ? 3 : 1.8; ctx.setLineDash(m.dash); ctx.lineJoin = "round";
+      ctx.beginPath();
+      Rs.forEach((R, k) => { const v = Math.max(ys[k], 1e-6); k ? ctx.lineTo(X(R), Y(v)) : ctx.moveTo(X(R), Y(v)); });
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.restore();
+  });
+  // legend, inside the left panel's lower left
+  ctx.font = `13px ${FONT}`; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  prof.forEach((m, i) => {
+    const lx = boxes[0].x + 12, ly = boxes[0].y + boxes[0].h - 16 - 19 * (prof.length - 1 - i);
+    ctx.strokeStyle = m.col; ctx.lineWidth = 2.2; ctx.setLineDash(m.dash);
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 28, ly); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = C.lab;
+    const extra = m.name === "Cored" ? ` (s = ${S.core.toFixed(2)})` : m.name === "Ellipse" ? ` (q = ${S.q.toFixed(2)}, s = ${S.coreE.toFixed(2)}; band: along the axes)` : m.point ? " (κ = 0 off the center)" : "";
+    ctx.fillText(m.name + extra, lx + 36, ly);
+  });
+  const { kpc_per_thetaE: kpc, Mpoint_Msun: ME } = P.SCALE;
+  $("profNote").innerHTML = `Convergence (left) and projected mass inside radius <i>R</i> (right) for the four lens models, without external shear, which carries no mass; the thick line is the model in use. The ellipse is averaged over azimuth; with its normalization the average follows the SIS closely, and the band spans the convergence along its minor and major axes. Dotted lines mark the Einstein radius and <i>κ</i> = 1 or <i>M</i> = <i>M</i><sub>E</sub>: inside a circular lens's Einstein radius the mean convergence is exactly 1. Units: <i>θ</i><sub>E</sub> = 1″ = ${kpc.toFixed(1)} kpc at the lens and <i>M</i><sub>E</sub> = π Σ<sub>crit</sub> <i>θ</i><sub>E</sub><sup>2</sup> = ${num(ME, 2)} M<sub>☉</sub>.`;
+}
+function openProfiles() { $("prof").hidden = false; drawProfiles(); }
+function closeProfiles() { $("prof").hidden = true; }
+$("profBtn").addEventListener("click", openProfiles);
+$("profClose").addEventListener("click", closeProfiles);
+$("prof").addEventListener("click", ev => { if (ev.target === $("prof")) closeProfiles(); });
+window.addEventListener("keydown", ev => { if (ev.key === "Escape" && !$("prof").hidden) closeProfiles(); });
+
+window.addEventListener("resize", () => { redraw(); if (!$("prof").hidden) drawProfiles(); });
 
 // ------------------------------------------------------------------ start
 loadHash();
@@ -879,6 +997,8 @@ syncControls();
 redraw();
 window.__lensex = { S: () => S, images: () => IMG, images0: () => IMG0, imagesC: () => IMGC, flux: () => skyFlux, lens: () => L,
                     clumpy: () => (EC ? EC.L : null), frameMs: () => frameMs,
+                    mkLens: spec => P.makeLens(spec), kap: (L, x, y) => P.kappa(L, x, y),
+                    profiles: () => { const Rs = [0.1, 1, 3]; return PROF_MODELS.map(([n, sp]) => ({ name: n, ...profileOf(sp(), Rs) })); },
                     hover: () => ({ source: hoverSrc, sub: hs, cursorS: $("cvS").style.cursor, cursorI: $("cvI").style.cursor }),
                     sky: () => skyLast && { M: skyLast.M, scale: skyLast.scale, sum: skyLast.sum, rawSum: skyLast.rawSum },
                     // displayed sky brightness (before the color scale) at sky position (x, y)

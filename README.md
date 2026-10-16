@@ -22,9 +22,13 @@ optional core) plus external shear, any of them with up to 20 dark-matter subhal
 at random near the Einstein ring and draggable in the sky panel. With subhalos the image tooltips give each image's
 magnification for the smooth lens and with the clumps, and how far the clumps move the image (mas), so flux-ratio
 anomalies can be read off directly; the sky panel zooms (scroll) to
-show the milliarcsecond structure a clump imprints on an image. Source shapes: a point source (a quasar), a uniform disk (shows surface-brightness conservation
-most clearly), and a galaxy with three bright knots; the disk and the galaxy take an inclination from face-on (0°) to
-edge-on (90°), with projected axis ratio √(cos² i + 0.01 sin² i) (an intrinsic thickness of 0.1).
+show the milliarcsecond structure a clump imprints on an image. Source shapes: a point source (a quasar) and a uniform ellipsoidal source (shows surface-brightness conservation
+most clearly), whose inclination runs from face-on (0°) to edge-on (90°), with projected axis ratio
+√(cos² i + 0.01 sin² i) (an intrinsic thickness of 0.1). Pressing on empty space and dragging pans either panel;
+scroll zooms about the pointer; double-click resets the view. A Profiles button in the Lens box opens a pop-up
+with the convergence κ(R) and the enclosed projected mass M(<R) of the four lens models (current core radius and
+axis ratio; the ellipse averaged over azimuth with a band from its minor to its major axis), checked against the
+analytic forms to 10⁻¹⁴ and, for the ellipse, against a direct integral of κ to 2 × 10⁻³.
 Draggable objects brighten under the pointer and show a grab cursor, without a caption: the source in the source
 plane (grabbed and moved from where it was taken hold of; a press elsewhere moves the source to the pointer) and
 the subhalos in the sky panel, where they live (they are in the lens plane, so they have no place in the source
@@ -47,7 +51,7 @@ A telescope-resolution slider blurs the sky with a Gaussian point-spread functio
   ψ_xx = bq(q²s² + y² + sψ̃)/(ψ̃ D), ψ_yy = bq(s² + x² + sψ̃)/(ψ̃ D), ψ_xy = −bqxy/(ψ̃ D), with
   ψ̃² = q²(s² + x²) + y² and D = (ψ̃ + s)² + (1 − q²)x². The trace equals 2κ to rounding.
 - **External shear**: ψ = [γ₁(x² − y²) + 2γ₂xy]/2 with (γ₁, γ₂) = γ(cos 2φ, sin 2φ).
-- **Subhalos**: pseudo-Jaffe clumps as in Dalal & Kochanek (2002, arXiv:astro-ph/0111456, Sect. 3; source in
+- **Subhalos**, either profile ("Isothermal" | "NFW" in the Subhalos box): pseudo-Jaffe clumps as in Dalal & Kochanek (2002, arXiv:astro-ph/0111456, Sect. 3; source in
   `rawdata/dalal2002/ms.tex`): κ = (b/2)[1/r − 1/√(r² + a²)], total mass M = π b a Σ_crit, tidally truncated at
   a = √(b b₀) with b₀ = θ_E (their text, after Metcalf & Madau 2001). In θ_E units M/M_E = b^{3/2}, with
   M_E = π Σ_crit θ_E² = 2.52 × 10¹¹ M☉ the mass inside the Einstein radius; a 10⁹ M☉ clump has b = 0.025 θ_E
@@ -55,6 +59,15 @@ A telescope-resolution slider blurs the sky with a Gaussian point-spread functio
   ψ = b[r − r²/(R_a + a) + a ln((a + R_a)/(2a))] (the SIS minus the cored isothermal sphere of Keeton 2001, written
   to avoid the cancellation in R_a − a). Positions are area-uniform in the annulus 0.5–1.5 θ_E. Each clump center is
   singular, so each clump has a cut, like the SIS. Line-of-sight halos at other redshifts are not modeled.
+  The NFW option: truncated NFW clumps of Baltz, Marshall & Oguri (2009, arXiv:0705.0682, appendix A, n = 1;
+  `rawdata/bmo2009/NFW_truncated.tex`), ρ ∝ [x(1+x)²]⁻¹ τ²/(τ² + x²), with their closed-form projected mass,
+  surface density and potential. Each clump keeps the isothermal clump's total mass and truncation radius
+  (r_t = a), and takes r_s = r_200/c_200 for a halo of that mass at z_l = 0.5, with M_200 defined at 200 ρ_crit(z_l)
+  (Planck 2018: 221.0 M☉ kpc⁻³) and c_200 = 5.71 (M_200/2×10¹² h⁻¹ M☉)^−0.084 (1+z)^−0.47 (Duffy et al. 2008,
+  arXiv:0804.2486, Table 1, NFW, full sample, z = 0–2; `rawdata/duffy2008`). Their fit covers ~10¹¹–10¹⁵ M☉, so
+  the clump masses here are an extrapolation. The result: c_200 = 16.5–7.6 and τ = r_t/r_s = 0.94–0.43 for
+  10⁶–10¹⁰ M☉ (r_s = 0.11–5.0 kpc), i.e. the clumps are the stripped inner cusps of their halos. An NFW center
+  deflects no light, so NFW clumps have no cut.
 - **Images**: the image plane is covered by a polar grid (200 radii log-spaced from 10⁻³ to 6, 256 angles), plus a
   finer polar grid around each subhalo (90 radii from 0.02 b to max(2a, 12b), clipped to 0.08–0.8 θ_E, 120 angles),
   whose images and critical curves are far smaller than the main cells; each grid triangle is mapped through the lens
@@ -84,7 +97,7 @@ A telescope-resolution slider blurs the sky with a Gaussian point-spread functio
 
 ## Verification
 
-`node validate.js` (56 checks, all pass):
+`node validate.js` (64 checks, all pass):
 
 - Point mass: image positions (u ± √(u² + 4))/2, magnifications, signed magnifications summing to 1, total equal to
   Paczyński's A(u), unit-circle critical curve, caustic collapsed to the origin; all to ~10⁻¹⁴.
@@ -99,14 +112,18 @@ A telescope-resolution slider blurs the sky with a Gaussian point-spread functio
   independent brute-force search (uniform Cartesian triangle grid, spacing 0.0033, 2.6 million triangles per lens)
   for four lenses with clumps, 112 sources including sources whose smooth-lens image falls on a clump: 395 images,
   up to 7 per source, none missed (the brute force misses 4 that the fine grids find, all next to a clump center).
-- **lenstronomy 1.14.2** (`crosscheck.py` writes `cache/lenstronomy_cases.json`): 9 lenses (2 with subhalos, built as
-  SIS + NIE(−b, s = a) per clump), 141 sources, 332 images found by lenstronomy's own solver, all found here;
+- Truncated NFW: dM_proj/dx = 2πxΣ and dψ/dx = M_proj/x for BMO09's closed forms (five-point derivatives, 3 × 10⁻⁸),
+  M_proj(∞) = total mass, the τ → ∞ (untruncated NFW) limit, and deflection/Hessian/κ consistency for lenses with
+  NFW clumps; the brute-force image search includes a lens with three NFW clumps.
+- **lenstronomy 1.14.2** (`crosscheck.py` writes `cache/lenstronomy_cases.json`): 10 lenses (3 with subhalos, built as
+  SIS + NIE(−b, s = a) per pseudo-Jaffe clump and lenstronomy's TNFW per NFW clump), 164 sources, 402 images found by
+  lenstronomy's own solver, all found here;
   positions to 6 × 10⁻⁸; relative delays to 9 × 10⁻⁹; deflection of the cored ellipsoid + shear identical to
   3 × 10⁻¹⁶; T_* recomputed with astropy agrees. Two further images found here (|μ| = 0.011 and 0.048, 0.002 θ_E from
   a clump center, residual 10⁻¹⁵) lie inside lenstronomy's search spacing (`min_distance` 0.001) around a singular
   center.
 
-`node uitest.js` drives the page in headless Chrome (76 checks): source dragging, the four models and their sliders,
+`node uitest.js` drives the page in headless Chrome (85 checks): source dragging, the four models and their sliders,
 source shapes and inclination (edge-on area 0.103 of face-on against 0.1), hover highlights and grab-dragging of the source and the clumps, display toggles, hover tooltips on each image marker (with the smooth-lens comparison), the
 subhalo controls (adding clumps, dragging a clump next to a saddle image: μ −1.24 against −2.37 smooth, reshuffle,
 sky zoom, clump positions in the URL hash), the on/off switch and Blink, the layout (two equal square canvases,
@@ -145,6 +162,12 @@ a clump drag) takes 15 ms with 6 clumps and 40 ms with 20 (measured in node).
    magnification-ratio map): the combined mass of the clumps (2.4% of the mass inside θ_E for six 10⁹ M☉ clumps)
    shifts the critical curve slightly, so the ratio swings sharply in a rim along the curve, while the images
    there move with the curve. The image tooltips compare matched images, which is the reliable measure.
+10. **An NFW clump perturbs less than an isothermal clump of the same mass close in, and about the same farther
+   out.** For the brightest saddle of the default quad, with the clump outside the image along the radial line:
+   10⁹ M☉ at 0.02 θ_E, ×0.38 (isothermal) against ×0.64 (NFW); at 0.05, ×0.52 against ×0.68; at 0.1, ×0.66
+   against ×0.74; 10⁸ M☉ at 0.1, ×0.92 for both. Near a critical curve (the minima) either profile can produce the
+   larger change. lenstronomy's TNFW `alpha_Rs` is the deflection at R_s of the untruncated NFW with the same ρ_0
+   ("neglects the truncation"), i.e. m0 (1 + ln ½)/R_s in these units.
 9. **On the perfect sky the magnification is invisible as brightness.** Surface brightness is conserved, so a flux
    change shows only as a change of image area. And a source larger than a clump's footprint averages over the
    footprint: image 3's flux change with a clump 0.04 θ_E outside the image is ×0.78 for a point source but ×0.97
@@ -155,7 +178,7 @@ a clump drag) takes 15 ms with 6 clumps and 40 ms with 20 (measured in node).
 
 - Dev server: `python3 web/serve.py 8791`, then http://localhost:8791/ (serve.py stamps the scripts with their
   modification times so VS Code's Simple Browser cannot run a stale copy).
-- Sources: `./fetch.sh` downloads Keeton (2001) and Dalal & Kochanek (2002) from arXiv into rawdata/.
+- Sources: `./fetch.sh` downloads Keeton (2001), Dalal & Kochanek (2002), Baltz, Marshall & Oguri (2009) and Duffy et al. (2008) from arXiv into rawdata/.
 - Cross-check: `python -m venv venv && venv/bin/pip install lenstronomy astropy && venv/bin/python crosscheck.py`,
   then `node validate.js`.
 - Deploy (as for spex, ismex and dustex): create the GitHub repository `cconroy20/lensex`, then

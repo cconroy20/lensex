@@ -61,13 +61,16 @@ function check(name, ok, detail) {
       const d = g.getImageData(0, 0, c.width, c.height).data; let n = 0;
       for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] > 150) n++; return n / (d.length / 4); })()`);
   // drag in the source plane from one theta_E position to another
+  // grab the source at its current position and move it to (x1, y1); (x0, y0) is ignored, since
+  // a press away from the source pans the view instead of moving the source
   const dragSource = async (x0, y0, x1, y1, steps = 8) => {
     await scrollTo("#cvS");
     const r = await rect("#cvS");
     const box = await ev(`(() => { const c = document.querySelector("#cvS"); const w = c.clientWidth, h = c.clientHeight;
         const side = Math.floor(Math.min(w - 56, h - 48)); return { x0: 48 + Math.floor((w - 56 - side) / 2), y0: 6, side }; })()`);
-    const E = await ev(`window.__lensex.S().zs`);
-    const toPx = (x, y) => [r.x + box.x0 + (x + E) / (2 * E) * box.side, r.y + box.y0 + (E - y) / (2 * E) * box.side];
+    const S0 = await ev(`window.__lensex.S()`), E = S0.zs;
+    x0 = S0.bx; y0 = S0.by;
+    const toPx = (x, y) => [r.x + box.x0 + (x - S0.csx + E) / (2 * E) * box.side, r.y + box.y0 + (S0.csy + E - y) / (2 * E) * box.side];
     let [px, py] = toPx(x0, y0);
     await mouse("mousePressed", px, py);
     for (let k = 1; k <= steps; k++) {
@@ -105,6 +108,29 @@ function check(name, ok, detail) {
     const tops = await ev(`[...document.querySelectorAll("canvas")].map(c => Math.round(c.getBoundingClientRect().top))`);
     check("the two panels' plots line up", tops[0] === tops[1], JSON.stringify(tops));
   }
+  // mass profiles pop-up: analytic profiles for the point mass, SIS and cored sphere; Gauss's theorem
+  // for the ellipse checked against a direct integral of kappa
+  {
+    await clickSel("#profBtn");
+    check("Profiles button opens the mass-profile pop-up", (await ev(`document.getElementById("prof").hidden`)) === false);
+    const pr = await ev(`window.__lensex.profiles()`), Rs = [0.1, 1, 3], s0 = (await ev(`window.__lensex.S()`)).core;
+    const err = (a, b) => Math.max(...a.map((v, i) => Math.abs(v / b[i] - 1)));
+    const ePt = err(pr[0].mass, [1, 1, 1]), eSk = err(pr[1].kap, Rs.map(R => 0.5 / R)), eSm = err(pr[1].mass, Rs);
+    const eCk = err(pr[2].kap, Rs.map(R => 0.5 / Math.hypot(s0, R))), eCm = err(pr[2].mass, Rs.map(R => Math.hypot(s0, R) - s0));
+    check("profiles: point mass M = M_E; SIS kappa = 1/2R, M = R; cored kappa = 1/2 sqrt(s^2+R^2), M = sqrt(s^2+R^2) - s",
+          Math.max(ePt, eSk, eSm, eCk, eCm) < 1e-6, `max rel error ${Math.max(ePt, eSk, eSm, eCk, eCm).toExponential(1)}`);
+    const direct = await ev(`(() => { const S = window.__lensex.S(), L = window.__lensex.mkLens({ model: "iso", s: S.coreE, q: S.q, pa: 0 });
+        let m = 0; const nr = 600, nph = 360, R = 1;
+        for (let i = 0; i < nr; i++) { const r = R * (i + 0.5) / nr; for (let j = 0; j < nph; j++) { const ph = 2 * Math.PI * (j + 0.5) / nph;
+          m += window.__lensex.kap(L, r * Math.cos(ph), r * Math.sin(ph)) * r * (R / nr) * (2 * Math.PI / nph); } }
+        return m / Math.PI; })()`);
+    check("profiles: the ellipse's enclosed mass (Gauss's theorem) matches a direct integral of kappa", Math.abs(pr[3].mass[1] / direct - 1) < 2e-3,
+          `M(<1) = ${pr[3].mass[1].toFixed(4)} vs ${direct.toFixed(4)}`);
+    await shot("profiles.png", true);
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    await sleep(150);
+    check("Esc closes the pop-up", (await ev(`document.getElementById("prof").hidden`)) === true);
+  }
   check("no image count on the sky panel", (await ev(`document.getElementById("iSub").textContent`)) === "");
   check("two panels only (source plane and sky)", (await ev(`document.querySelectorAll(".panel").length`)) === 2 && (await ev(`document.getElementById("cvT")`)) === null);
   // layout: the two panels and all the controls fit in one screen, with no scrolling
@@ -115,7 +141,7 @@ function check(name, ok, detail) {
     const lay = await ev(`(() => { const c = document.querySelector(".controls").getBoundingClientRect(), p = document.querySelector(".panels").getBoundingClientRect();
         return { bottom: c.bottom + window.scrollY, panelsBottom: p.bottom + window.scrollY, sw: document.documentElement.scrollWidth }; })()`);
     check(`${W} x ${H}, ${model.slice(1)}: the controls end inside the window`, lay.bottom <= H && lay.panelsBottom < lay.bottom && lay.sw <= W, `controls end at ${lay.bottom.toFixed(0)} px`);
-    const cvs = await ev(`[...document.querySelectorAll("canvas")].map(c => [c.clientWidth, c.clientHeight])`);
+    const cvs = await ev(`[...document.querySelectorAll(".panel canvas")].map(c => [c.clientWidth, c.clientHeight])`);
     check(`${W} x ${H}, ${model.slice(1)}: the two canvases are equal squares of at least 400 px`, cvs.length === 2 && cvs[0][0] === cvs[1][0] && cvs[0][0] === cvs[0][1] && cvs[0][0] >= 400, JSON.stringify(cvs));
     if (W === 1440 && model === "mEll") await shot("layout_1440x900.png");
     if (W === 1280 && model === "mEll") await shot("layout_1280x800.png");
@@ -160,7 +186,41 @@ function check(name, ok, detail) {
   check("dragging moves the source", Math.abs(S1.bx - 0.9) < 0.02 && Math.abs(S1.by - 0.5) < 0.02, `β = (${S1.bx.toFixed(3)}, ${S1.by.toFixed(3)})`);
   const t1 = await imgs();
   check("source far off axis: one image", t1.length === 1 && t1[0] === "min", t1.join(","));
-  check("position readout follows the source", /0\.9/.test(await ev(`document.getElementById("vB").textContent`)));
+  check("the source-position line is gone", (await ev(`document.getElementById("vB")`)) === null);
+  check("no tagline in the header", (await ev(`document.querySelector(".tag")`)) === null);
+  // panning: a press on empty space drags the view, not the source, in both panels
+  {
+    await scrollTo("#cvS");
+    const rS = await rect("#cvS"), S0 = await ev(`window.__lensex.S()`);
+    const px = rS.x + 60, py = rS.y + 60;          // a corner of the plot, far from the source
+    await mouse("mousePressed", px, py);
+    for (let s = 1; s <= 5; s++) { await mouse("mouseMoved", px + 10 * s, py + 6 * s); await sleep(40); }
+    await mouse("mouseReleased", px + 50, py + 30); await sleep(200);
+    const S9 = await ev(`window.__lensex.S()`);
+    const side = await ev(`(() => { const c = document.querySelector("#cvS"); return Math.floor(Math.min(c.clientWidth - 56, c.clientHeight - 48)); })()`);
+    const k = 2 * S0.zs / side;
+    check("source plane: dragging empty space pans the view and leaves the source in place",
+          Math.abs(S9.csx - (S0.csx - 50 * k)) < 1e-3 && Math.abs(S9.csy - (S0.csy + 30 * k)) < 1e-3 && S9.bx === S0.bx && S9.by === S0.by,
+          `center (${S9.csx.toFixed(3)}, ${S9.csy.toFixed(3)})`);
+    await scrollTo("#cvI");
+    const rI = await rect("#cvI"), I0 = await ev(`window.__lensex.S()`);
+    const qx = rI.x + 70, qy = rI.y + 70;
+    await mouse("mousePressed", qx, qy);
+    for (let s = 1; s <= 5; s++) { await mouse("mouseMoved", qx + 8 * s, qy + 4 * s); await sleep(40); }
+    await mouse("mouseReleased", qx + 40, qy + 20); await sleep(300);
+    const I9 = await ev(`window.__lensex.S()`);
+    check("sky: dragging empty space pans the view", I9.cix < I0.cix - 0.05 && I9.ciy > I0.ciy + 0.02, `center (${I9.cix.toFixed(3)}, ${I9.ciy.toFixed(3)})`);
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: qx, y: qy, button: "left", clickCount: 2 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: qx, y: qy, button: "left", clickCount: 2 });
+    await scrollTo("#cvS");
+    const rS2 = await rect("#cvS");
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: rS2.x + 60, y: rS2.y + 60, button: "left", clickCount: 2 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: rS2.x + 60, y: rS2.y + 60, button: "left", clickCount: 2 });
+    await sleep(300);
+    const R9 = await ev(`window.__lensex.S()`);
+    check("double-click resets both views", R9.cix === 0 && R9.ciy === 0 && R9.csx === 0 && R9.csy === 0 && R9.zi === 2.5 && R9.zs === 1.25);
+    await move(5, 5);
+  }
   check("URL hash records the source", /bx=0\.9/.test(await ev(`location.hash`)), await ev(`location.hash`));
   const fmsDrag = await ev(`window.__lensex.frameMs()`);
   check("source drag: frame time (cored lens, disk source)", fmsDrag < 150, fmsDrag.toFixed(0) + " ms");
@@ -193,14 +253,14 @@ function check(name, ok, detail) {
   await setRange("#sQ", 0.7); await setRange("#sG", 0.08);
 
   // ---------------------------------------------------------------- shapes and toggles
-  check("the F source is gone", (await ev(`document.getElementById("tF")`)) === null);
-  for (const [idd, name] of [["#tGal", "galaxy"], ["#tDisk", "disk"]]) {
-    await clickSel(idd);
-    const bf = await brightFrac("#cvS");
-    check(`source shape ${name} renders`, bf > 0.0005, (100 * bf).toFixed(3) + "%");
-    if (name === "galaxy") { await dragSource(0.05, 0.02, 0.1, 0.05, 4); const fg = await ev(`window.__lensex.frameMs()`);
-      check("source drag: frame time (galaxy source)", fg < 200, fg.toFixed(0) + " ms"); }
-  }
+  check("only Point and Ellipsoidal sources", (await ev(`document.getElementById("tF")`)) === null && (await ev(`document.getElementById("tGal")`)) === null &&
+        (await ev(`document.getElementById("tDisk").textContent`)) === "Ellipsoidal");
+  await clickSel("#tDisk");
+  const bfd = await brightFrac("#cvS");
+  check("ellipsoidal source renders", bfd > 0.0005, (100 * bfd).toFixed(3) + "%");
+  await dragSource(0.05, 0.02, 0.1, 0.05, 4);
+  const fgd = await ev(`window.__lensex.frameMs()`);
+  check("source drag: frame time (ellipsoidal source)", fgd < 200, fgd.toFixed(0) + " ms");
   // inclination: edge-on, the disk covers ~0.1 of its face-on area
   await move(5, 5); await sleep(150);          // off the source, so no hover ring is counted
   // bright pixels inside the plot box only (the frame and tick marks are light gray)
@@ -288,6 +348,20 @@ function check(name, ok, detail) {
         `μ ${pair[0].toFixed(2)} vs smooth ${pair[1].toFixed(2)}; ${pair[2]} images vs ${pair[3]} smooth`);
   await shot("subhalo_on_image.png");
   {
+    await clickSel("#spNFW");
+    const L6 = await ev(`window.__lensex.lens().subs[0]`);
+    const pN = await ev(`(() => { const I = window.__lensex.images(), I0 = window.__lensex.images0();
+        const t = I0.filter(m => m.type === "saddle").sort((a, b) => Math.abs(b.mu) - Math.abs(a.mu))[0];
+        const m = I.filter(m => m.type === "saddle").sort((a, b) => Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y))[0];
+        return [m.mu, t.mu]; })()`);
+    check("NFW clumps: the same clump perturbs the saddle less than the isothermal one",
+          L6.prof === "nfw" && Math.abs(pN[0] / pN[1] - 1) < Math.abs(pair[0] / pair[1] - 1),
+          `NFW μ ${pN[0].toFixed(2)} vs isothermal ${pair[0].toFixed(2)}, smooth ${pN[1].toFixed(2)}`);
+    check("NFW readout shows r_s, r_t", /θE|θ/.test(await ev(`document.getElementById("readSub").textContent`)) && /rs/.test((await ev(`document.getElementById("readSub").textContent`)).replace(/\s/g, "")));
+    await shot("subhalo_nfw.png");
+    await clickSel("#spPJ");
+  }
+  {
     const [hx, hy] = await skyPx(pair[0] === pair[0] ? (await ev(`window.__lensex.images().filter(m => m.type === "saddle").sort((a, b) => Math.hypot(a.x - ${img0.x}, a.y - ${img0.y}) - Math.hypot(b.x - ${img0.x}, b.y - ${img0.y}))[0].x`)) : 0,
                                  await ev(`window.__lensex.images().filter(m => m.type === "saddle").sort((a, b) => Math.hypot(a.x - ${img0.x}, a.y - ${img0.y}) - Math.hypot(b.x - ${img0.x}, b.y - ${img0.y}))[0].y`));
     await clickSel("#cSubs");                // hide the clump markers so the image, not the clump, is under the pointer
@@ -338,11 +412,9 @@ function check(name, ok, detail) {
   check("telescope view: blurring an extended source conserves the light", Math.abs(sk.sum / sk.rawSum - 1) < 0.02, `blurred/ideal ${(sk.sum / sk.rawSum).toFixed(4)}`);
   check("resolution readout", /0\.1″ FWHM/.test(await ev(`document.getElementById("vFW").textContent`)), await ev(`document.getElementById("vFW").textContent`));
   await shot("disk_psf.png");
-  await clickSel("#tGal");
   await dragSource(0.05, 0.02, 0.1, 0.04, 4);
   const fBlur = await ev(`window.__lensex.frameMs()`);
-  check("telescope view: source-drag frame time (galaxy, 0.1\" blur, 6 clumps)", fBlur < 250, fBlur.toFixed(0) + " ms");
-  await clickSel("#tDisk");
+  check("telescope view: source-drag frame time (ellipsoid, 0.1\" blur, 6 clumps)", fBlur < 250, fBlur.toFixed(0) + " ms");
   await setRange("#sFW", -2.3);
   check("perfect telescope readout", (await ev(`document.getElementById("vFW").textContent`)) === "perfect");
   await setRange("#sR", Math.log10(0.1));

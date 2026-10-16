@@ -245,6 +245,62 @@ const subFromMass = (M, x, y) => {               // M in Msun for theta_E = 1 ar
   check("lens + subhalos: curl-free", eC < 1e-5, `max error ${fmt(eC)}`);
   check("lens + subhalos: trace of Hessian and div alpha = 2 kappa", eDiv < 1e-5, `max error ${fmt(eDiv)}`);
 }
+// ---------------------------------------------------------------- truncated NFW clumps
+{
+  let e1 = 0, e2 = 0, e3 = 0;
+  for (const t of [0.4, 0.8, 3, 30]) {
+    for (const x of [0.003, 0.05, 0.4, 0.95, 1.05, 2.5, 12]) {
+      const h = 1e-3 * x, d5 = f => (-f(x + 2 * h) + 8 * f(x + h) - 8 * f(x - h) + f(x - 2 * h)) / (12 * h);   // five-point derivative
+      const d1 = d5(z => P.nfwMp(z, t)), d2 = d5(z => P.nfwP(z, t));
+      e1 = Math.max(e1, Math.abs(d1 / (2 * Math.PI * x * P.nfwSigma(x, t)) - 1));
+      e2 = Math.max(e2, Math.abs(d2 / (P.nfwMp(x, t) / x) - 1));
+    }
+    e3 = Math.max(e3, Math.abs(P.nfwMp(1e6, t) / P.nfwTot(t) - 1));
+  }
+  check("truncated NFW (BMO09): dM_proj/dx = 2 pi x Sigma", e1 < 1e-5, `max rel error ${fmt(e1)}`);
+  check("truncated NFW (BMO09): d psi/dx = M_proj / x (the closed-form potential)", e2 < 1e-5, `max rel error ${fmt(e2)}`);
+  check("truncated NFW (BMO09): M_proj(infinity) = total mass", e3 < 1e-6, `max rel error ${fmt(e3)}`);
+  // tau -> infinity: the untruncated NFW, M_proj = F(x) + ln(x/2) (BMO09), corrections O(ln tau / tau^2)
+  let e4 = 0;
+  for (const x of [0.1, 0.7, 1.3, 5]) e4 = Math.max(e4, Math.abs(P.nfwMp(x, 1e4) / (P.nfwF(x) + Math.log(x / 2)) - 1));
+  check("truncated NFW: tau -> infinity recovers the NFW projected mass", e4 < 1e-5, `max rel error ${fmt(e4)} at tau = 1e4`);
+}
+const nfwFromMass = (M, x, y) => {            // the page's recipe: same mass and a as the isothermal clump
+  const c = subFromMass(M, x, y), S = P.SCALE, [A, B, Cz, Mp] = S.duffy;
+  const r200 = Math.cbrt(3 * M / (4 * Math.PI * 200 * S.rhoCrit_Msun_kpc3)), c200 = A * Math.pow(M * S.h / Mp, B) * Math.pow(1 + S.zl, Cz);
+  const ts = r200 / c200 / S.kpc_per_thetaE, tau = c.a / ts;
+  return Object.assign(c, { prof: "nfw", ts, tau, m0: (M / S.Mpoint_Msun) / P.nfwTot(tau) });
+};
+{
+  const cases = [
+    { model: "iso", s: 0, q: 0.7, pa: 0.4, g: 0.08, gpa: 2.1, subs: [nfwFromMass(1e9, 0.9, 0.5), nfwFromMass(1e10, -0.8, 0.7), nfwFromMass(1e8, 0.1, -1.1)] },
+    { model: "point", subs: [nfwFromMass(1e10, 1.0, 0.1), subFromMass(1e9, -0.6, -0.9)] },
+  ];
+  let eG = 0, eH = 0, eDiv = 0;
+  const o = new Float64Array(5), op = new Float64Array(5), om = new Float64Array(5);
+  for (const c of cases) {
+    const L = P.makeLens(c);
+    for (let k = 0; k < 300; k++) {
+      const x = 5 * rnd() - 2.5, y = 5 * rnd() - 2.5, h = 1e-6;
+      if (Math.hypot(x, y) < 0.05 || L.subs.some(s => Math.hypot(x - s.x, y - s.y) < 0.02)) continue;
+      P.deflect(L, x, y, o, true);
+      const gx = (P.potential(L, x + h, y) - P.potential(L, x - h, y)) / (2 * h), gy = (P.potential(L, x, y + h) - P.potential(L, x, y - h)) / (2 * h);
+      eG = Math.max(eG, Math.abs(gx - o[0]), Math.abs(gy - o[1]));
+      P.deflect(L, x + h, y, op, false); P.deflect(L, x - h, y, om, false);
+      const axx = (op[0] - om[0]) / (2 * h), ayx = (op[1] - om[1]) / (2 * h);
+      P.deflect(L, x, y + h, op, false); P.deflect(L, x, y - h, om, false);
+      const axy = (op[0] - om[0]) / (2 * h), ayy = (op[1] - om[1]) / (2 * h);
+      eH = Math.max(eH, Math.abs(axx - o[2]), Math.abs(ayy - o[3]), Math.abs(axy - o[4]), Math.abs(ayx - o[4]));
+      eDiv = Math.max(eDiv, Math.abs(o[2] + o[3] - 2 * P.kappa(L, x, y)));
+    }
+  }
+  check("lens + NFW subhalos: deflection = grad psi", eG < 1e-7, `max error ${fmt(eG)}`);
+  check("lens + NFW subhalos: analytic Hessian = grad deflection", eH < 1e-5, `max error ${fmt(eH)}`);
+  check("lens + NFW subhalos: trace of Hessian = 2 kappa", eDiv < 1e-10, `max error ${fmt(eDiv)}`);
+  const L = P.makeLens(cases[0]);
+  check("NFW clumps have no cut (no singular center)", P.criticalCurves(P.buildGrid(L)).cuts.length === 1, "only the main SIE cut");
+}
+
 // Independent image search: a uniform Cartesian triangle grid (spacing 0.0033) with Newton
 // refinement, compared with the polar-block finder of physics.js.
 function bruteImages(L, srcs, n = 1600, E = 2.6) {
@@ -281,6 +337,7 @@ function bruteImages(L, srcs, n = 1600, E = 2.6) {
     ["cored sphere + 4 clumps of 1e8", { model: "iso", s: 0.1, q: 1, subs: [[0.7, 0.6], [-0.9, 0.2], [0.2, -0.95], [0.5, -0.5]].map(([x, y]) => subFromMass(1e8, x, y)) }],
     ["point mass + 3 clumps of 1e9", { model: "point", subs: [[1.0, 0.2], [-0.5, 0.8], [0.3, -1.2]].map(([x, y]) => subFromMass(1e9, x, y)) }],
     ["SIE + 1e10 clump on an image", { model: "iso", s: 0, q: 0.8, pa: 0.2, subs: [subFromMass(1e10, 1.12, 0.05)] }],
+    ["SIE + 3 NFW clumps (1e9, 1e10 on an image, 1e8)", { model: "iso", s: 0, q: 0.8, pa: 0.2, subs: [nfwFromMass(1e10, 1.12, 0.05), nfwFromMass(1e9, -0.7, 0.6), nfwFromMass(1e8, 0.2, -1.0)] }],
   ];
   let fastMiss = 0, bruteMiss = 0, nimg = 0, nsrc = 0;
   const hist = {};
