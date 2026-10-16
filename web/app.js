@@ -26,7 +26,7 @@ const FW_DEF = Math.log10(0.05);     // default resolution: 0.05 arcsec FWHM
 function defaults() {
   return { model: "cored", core: 0.1, coreE: 0, q: 0.7, pa: 30, g: 0.08, gpa: 120,
            bx: 0.2, by: 0.08, type: "pt", R: 0.08, inc: 0,
-           crit: true, marks: true, unl: false, mass: false, zs: 1.25,
+           crit: true, marks: false, unl: false, mass: false, zs: 1.25,
            nsub: 0, lm: 9, seed: 1, subs: [], showSubs: true, zi: EI, cix: 0, ciy: 0, son: true, fw: FW_DEF };
 }
 let S = defaults();

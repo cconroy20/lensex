@@ -88,6 +88,7 @@ function check(name, ok, detail) {
   check("default (cored lens, source near the axis): minimum, saddle, maximum", t0.join(",") === "min,saddle,max", t0.join(","));
   const Sd = await ev(`window.__lensex.S()`);
   check("default: a point source seen at 0.05\" resolution", Sd.type === "pt" && Math.abs(Sd.fw - Math.log10(0.05)) < 1e-9 && /0\.05″ FWHM/.test(await ev(`document.getElementById("vFW").textContent`)));
+  check("image markers are off by default", (await ev(`window.__lensex.S().marks`)) === false && !(await ev(`document.getElementById("cMarks").checked`)));
   check("no image count on the sky panel", (await ev(`document.getElementById("iSub").textContent`)) === "");
   check("two panels only (source plane and sky)", (await ev(`document.querySelectorAll(".panel").length`)) === 2 && (await ev(`document.getElementById("cvT")`)) === null);
   // layout: the two panels and all the controls fit in one screen, with no scrolling
@@ -227,6 +228,7 @@ function check(name, ok, detail) {
     await move(5, 5);
     return [hits, pts.length];
   };
+  await clickSel("#cMarks");                  // the image-marker tooltips need the markers
   const [hI, nI] = await hover("#cvI");
   check("hovering each image marker in the sky shows its numbers", hI === nI, `${hI}/${nI}`);
 
