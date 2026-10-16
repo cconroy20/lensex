@@ -89,6 +89,21 @@ function check(name, ok, detail) {
   const Sd = await ev(`window.__lensex.S()`);
   check("default: a point source seen at 0.05\" resolution", Sd.type === "pt" && Math.abs(Sd.fw - Math.log10(0.05)) < 1e-9 && /0\.05″ FWHM/.test(await ev(`document.getElementById("vFW").textContent`)));
   check("image markers are off by default", (await ev(`window.__lensex.S().marks`)) === false && !(await ev(`document.getElementById("cMarks").checked`)));
+  // colorbar and stretch: log by default, three decades; the faint central image shows only in log
+  {
+    const cb = await ev(`[...document.querySelectorAll("#cbTicks .tk")].map(t => t.textContent).filter(Boolean).join(" ")`);
+    check("colorbar: log stretch by default, ticks 10^-2 0.1 1, labeled", (await ev(`window.__lensex.S().slog`)) === true && cb === "10−2 0.1 1" &&
+          /brightest image = 1/.test(await ev(`document.getElementById("cbLab").textContent`)), cb);
+    const c3 = await ev(`window.__lensex.images().find(m => m.type === "max")`);
+    const vLog = await ev(`window.__lensex.rampAt(${c3.x}, ${c3.y})`);
+    await clickSel("#stLin");
+    const vLin = await ev(`window.__lensex.rampAt(${c3.x}, ${c3.y})`), cbLin = await ev(`[...document.querySelectorAll("#cbTicks .tk")].map(t => t.textContent).filter(Boolean).join(" ")`);
+    check("log stretch shows the faint central image (|μ| 0.09) that the linear stretch hides", vLog > 0.3 && vLin < 0.03 && cbLin === "0 0.5 1",
+          `ramp position ${vLog.toFixed(3)} (log) vs ${vLin.toFixed(3)} (linear); linear ticks ${cbLin}`);
+    await clickSel("#stLog");
+    const tops = await ev(`[...document.querySelectorAll("canvas")].map(c => Math.round(c.getBoundingClientRect().top))`);
+    check("the two panels' plots line up", tops[0] === tops[1], JSON.stringify(tops));
+  }
   check("no image count on the sky panel", (await ev(`document.getElementById("iSub").textContent`)) === "");
   check("two panels only (source plane and sky)", (await ev(`document.querySelectorAll(".panel").length`)) === 2 && (await ev(`document.getElementById("cvT")`)) === null);
   // layout: the two panels and all the controls fit in one screen, with no scrolling

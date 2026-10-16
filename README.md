@@ -73,6 +73,12 @@ A telescope-resolution slider blurs the sky with a Gaussian point-spread functio
   field. A point source is drawn as one PSF per image with flux |μ| from the image finder (exact; minimum FWHM
   0.01″). The display scale is fixed by the brightest point of the smooth lens's blurred sky (with 25% headroom), so
   switching the subhalos on and off compares like with like. Default: a point source at 0.05″.
+- **Color scale**: one ramp (navy → brown → orange → amber → cream), labeled by a colorbar in the sky panel header.
+  The stretch is logarithmic over three decades by default (a Lin | Log switch beside the colorbar); the source
+  plane uses the same stretch. Perfect telescope: surface brightness with the source peak = 1, the same scale in both
+  panels, so a lensed image visibly keeps the source's colors. Blurred or point source: 1 = the brightest image of
+  the smooth lens, top of scale 1.25. The log stretch brings up the demagnified central image of the default cored
+  lens (|μ| = 0.09, ramp position 0.37), which the linear stretch leaves at 0.01.
 - **Left out**: multiple lens planes, microlensing by stars in the lens galaxy, finite-source effects on the point
   magnifications in the tooltips, and the light-curve and weak-lensing views (planned second stage).
 
@@ -100,7 +106,7 @@ A telescope-resolution slider blurs the sky with a Gaussian point-spread functio
   a clump center, residual 10⁻¹⁵) lie inside lenstronomy's search spacing (`min_distance` 0.001) around a singular
   center.
 
-`node uitest.js` drives the page in headless Chrome (72 checks): source dragging, the four models and their sliders,
+`node uitest.js` drives the page in headless Chrome (76 checks): source dragging, the four models and their sliders,
 source shapes and inclination (edge-on area 0.103 of face-on against 0.1), hover highlights and grab-dragging of the source and the clumps, display toggles, hover tooltips on each image marker (with the smooth-lens comparison), the
 subhalo controls (adding clumps, dragging a clump next to a saddle image: μ −1.24 against −2.37 smooth, reshuffle,
 sky zoom, clump positions in the URL hash), the on/off switch and Blink, the layout (two equal square canvases,

@@ -27,7 +27,7 @@ function defaults() {
   return { model: "cored", core: 0.1, coreE: 0, q: 0.7, pa: 30, g: 0.08, gpa: 120,
            bx: 0.2, by: 0.08, type: "pt", R: 0.08, inc: 0,
            crit: true, marks: false, unl: false, mass: false, zs: 1.25,
-           nsub: 0, lm: 9, seed: 1, subs: [], showSubs: true, zi: EI, cix: 0, ciy: 0, son: true, fw: FW_DEF };
+           nsub: 0, lm: 9, seed: 1, subs: [], showSubs: true, zi: EI, cix: 0, ciy: 0, son: true, fw: FW_DEF, slog: true };
 }
 let S = defaults();
 const NUMKEYS = ["core", "coreE", "q", "pa", "g", "gpa", "bx", "by", "R", "inc", "zs",
@@ -167,7 +167,12 @@ function ramp(stops, n) {
   return lut;
 }
 // source brightness: navy sky through amber to cream
-const LUT_SRC = ramp([[0, "#0e1729"], [0.3, "#4f3328"], [0.62, "#d07f2c"], [0.85, "#FFB547"], [1, "#FFF1D0"]], 256);
+const SRC_STOPS = [[0, "#0e1729"], [0.3, "#4f3328"], [0.62, "#d07f2c"], [0.85, "#FFB547"], [1, "#FFF1D0"]];
+const LUT_SRC = ramp(SRC_STOPS, 256);
+// The display stretch: brightness I in units of the top of the scale onto 0..1 of the
+// ramp, linearly or logarithmically over DEC decades.
+const DEC = 3;
+const stretch = I => clamp(S.slog ? (I > 0 ? 1 + Math.log10(I) / DEC : 0) : I, 0, 1);
 // ------------------------------------------------------------------ the source
 // brightness 0..1 at offset (dx, dy) from the source center, in theta_E
 // The disk and the galaxy are thin disks seen at inclination S.inc (0 = face-on); the
@@ -469,7 +474,7 @@ function drawSource() {
     for (let j = 0; j < N; j++) {
       const y = E - (j + 0.5) * d - S.by;
       for (let i = 0; i < N; i++) {
-        const v = f(-E + (i + 0.5) * d - S.bx, y), k = 3 * Math.round(v * 255), m = 4 * (j * N + i);
+        const v = stretch(f(-E + (i + 0.5) * d - S.bx, y)), k = 3 * Math.round(v * 255), m = 4 * (j * N + i);
         px[m] = LUT_SRC[k]; px[m + 1] = LUT_SRC[k + 1]; px[m + 2] = LUT_SRC[k + 2]; px[m + 3] = 255;
       }
     }
@@ -513,6 +518,26 @@ function drawSource() {
 }
 
 // ------------------------------------------------------------------ sky
+// The colorbar under the sky panel.  With a perfect telescope the sky shows surface
+// brightness with the source peak = 1; with blurring (or a point source) brightness relative
+// to the brightest point of the smooth lens's sky, whose top of scale is HEAD = 1.25.
+const CBAR_CSS = "linear-gradient(to right, " + SRC_STOPS.map(([t, c]) => `${c} ${(100 * t).toFixed(0)}%`).join(", ") + ")";
+function drawColorbar() {
+  const top = psfOn() ? HEAD : 1, ticks = [];
+  if (S.slog) {
+    for (let e = Math.ceil(Math.log10(top) - DEC); e <= Math.floor(Math.log10(top) + 1e-9); e++) {
+      const t = Math.pow(10, e);
+      ticks.push([1 + Math.log10(t / top) / DEC, e === 0 ? "1" : e === -1 ? "0.1" : "10<sup>" + String(e).replace("-", "−") + "</sup>"]);
+    }
+  } else {
+    for (let t = 0; t <= top + 1e-9; t += 0.25) ticks.push([t / top, t % 0.5 === 0 ? String(t) : ""]);
+  }
+  $("cbTicks").innerHTML = ticks.map(([v, l]) => `<span class="tk" style="left:${(100 * v).toFixed(2)}%">${l}</span>`).join("");
+  $("cbGrad").style.background = CBAR_CSS;
+  $("cbLab").innerHTML = psfOn() ? "brightness<br>brightest image = 1" : "surface brightness<br>source peak = 1";
+  $("stLin").setAttribute("aria-pressed", !S.slog); $("stLog").setAttribute("aria-pressed", S.slog);
+}
+
 let boxI = null, skyFlux = { lensed: 0, unlensed: 0 }, skyLast = null;
 function pxOf(b, x, y) {
   const { cx, cy, E } = view();
@@ -564,10 +589,11 @@ function drawSky() {
   const sb = psfOn() ? skyBright(N, cur, IMG, raw) : { arr: raw, M: N };
   const scale = psfOn() ? 1 / (HEAD * brightRef(N)) : 1, M = sb.M, img = new ImageData(M, M), px = img.data;
   for (let n = 0; n < M * M; n++) {
-    const k = 3 * Math.round(clamp(sb.arr[n] * scale, 0, 1) * 255), m = 4 * n;
+    const k = 3 * Math.round(stretch(sb.arr[n] * scale) * 255), m = 4 * n;
     px[m] = LUT_SRC[k]; px[m + 1] = LUT_SRC[k + 1]; px[m + 2] = LUT_SRC[k + 2]; px[m + 3] = 255;
   }
   skyLast = { arr: sb.arr, M, scale, cx, cy, E, rawSum: fl, sum: sb.arr.reduce((a, v) => a + v, 0) * (N / M) * (N / M) };
+  drawColorbar();
   blit(ctx, b, img, M);
   const map = skyToPx, seg = (x0, y0, x1, y1) => { const a = map(x0, y0), c = map(x1, y1); ctx.moveTo(a[0], a[1]); ctx.lineTo(c[0], c[1]); };
   ctx.save();
@@ -722,6 +748,8 @@ $("blink").addEventListener("click", () => {
   blinkTimer = setInterval(() => setOn(!S.son), 750);
   setOn(!S.son);
 });
+$("stLin").addEventListener("click", () => { S.slog = false; saveHash(); redraw(); });
+$("stLog").addEventListener("click", () => { S.slog = true; saveHash(); redraw(); });
 for (const [k, id] of [["crit", "cCrit"], ["marks", "cMarks"], ["unl", "cUnl"], ["mass", "cMass"], ["showSubs", "cSubs"]])
   $(id).addEventListener("change", e => { S[k] = e.target.checked; saveHash(); redraw(); });
 $("reset").addEventListener("click", () => { stopBlink(); S = defaults(); hl = -1; draft = false; updateLens(); updateImages(); syncControls(); saveHash(); redraw(); });
@@ -859,6 +887,9 @@ window.__lensex = { S: () => S, images: () => IMG, images0: () => IMG0, imagesC:
                     // displayed sky brightness (before the color scale) at sky position (x, y)
                     skyAt: (x, y) => { const q = skyLast, i = Math.floor((x - q.cx + q.E) / (2 * q.E) * q.M), j = Math.floor((q.cy + q.E - y) / (2 * q.E) * q.M);
                                        return q.arr[j * q.M + i]; },
+                    // position on the color ramp (0..1) of the sky at (x, y), after the stretch
+                    rampAt: (x, y) => { const q = skyLast, i = Math.floor((x - q.cx + q.E) / (2 * q.E) * q.M), j = Math.floor((q.cy + q.E - y) / (2 * q.E) * q.M);
+                                        return stretch(q.arr[j * q.M + i] * q.scale); },
                     // displayed sky light summed within radius r of (x, y), in units of the full-field pixel
                     skySum: (x, y, r) => { const q = skyLast, d = 2 * q.E / q.M; let t = 0;
                                            for (let j = 0; j < q.M; j++) for (let i = 0; i < q.M; i++) {

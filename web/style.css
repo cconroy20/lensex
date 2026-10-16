@@ -7,7 +7,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   font:18px/1.55 Charter,"PT Serif",Palatino,Georgia,"DejaVu Serif",serif}
 /* The page is as wide as two canvases need: the canvas size is set by the window height,
    so the source and sky panels and the controls beneath them fit without scrolling. */
-:root{--cv:max(320px, calc(100vh - 365px))}
+:root{--cv:max(320px, calc(100vh - 372px))}
 header,main,footer{max-width:min(1460px, max(1180px, calc(2 * var(--cv) + 104px)));margin:0 auto;padding:0 22px}
 
 #err{position:fixed;inset:0 0 auto 0;z-index:99;background:#7a1420;color:#fff;
@@ -100,6 +100,8 @@ footer p{margin:.5em 0;max-width:110ch}
 @media (max-width:640px){ .models{flex-wrap:wrap} }
 @media (max-width:640px){
   .panels,.controls,.lensgrid{grid-template-columns:minmax(0,1fr)}
+  .ph{height:auto;flex-wrap:wrap;row-gap:6px}
+  .cbrow{margin-left:0;flex-wrap:wrap;row-gap:4px}
   canvas{max-width:none}
 }
 @media (max-width:860px){
@@ -113,3 +115,14 @@ footer p{margin:.5em 0;max-width:110ch}
 .legend .cbar{display:inline-block;width:150px;height:10px;border-radius:2px}
 .legend[hidden]{display:none}
 .caserow .btns{display:flex;gap:6px}
+
+/* colorbar in the sky panel header: stretch switch, gradient with ticks, two-line label */
+.ph{height:40px;align-items:center;flex-wrap:nowrap}
+.ph h2{margin:0}
+.cbrow{display:flex;align-items:flex-start;gap:10px;margin-left:auto}
+.cbar{position:relative;width:150px;height:24px;margin-top:2px}
+#cbGrad{height:9px;border-radius:2px;border:1px solid var(--line)}
+#cbTicks{position:relative;height:13px;font-size:.74rem;color:#3b3733}
+#cbTicks .tk{position:absolute;top:2px;transform:translateX(-50%);white-space:nowrap;line-height:1}
+#cbTicks .tk::before{content:"";position:absolute;left:50%;top:-4px;width:1px;height:3px;background:var(--muted)}
+.cblab{font-size:.76rem;color:var(--muted);line-height:1.2;white-space:nowrap}
