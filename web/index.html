@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lensing Explorer</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%230e1729%27/%3E%3Ccircle cx=%278%27 cy=%278%27 r=%274.6%27 fill=%27none%27 stroke=%27%23FFB547%27 stroke-width=%271.8%27/%3E%3Ccircle cx=%278%27 cy=%278%27 r=%271%27 fill=%27%2358C4FF%27/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="err" hidden></div>
+<div id="tip" hidden></div>
+
+<header>
+  <div class="bar">
+    <span class="mark">Lensing Explorer</span>
+    <span class="tag">Drag the source and the subhalos; watch the images respond.</span>
+    <button id="reset" class="ghost" type="button" title="Back to the defaults: a cored isothermal lens and a small disk-shaped source just off the lens axis.">Reset</button>
+  </div>
+</header>
+
+<main>
+  <div class="panels">
+    <section class="panel">
+      <div class="ph"><h2 title="The source plane: the background source at the true position, as seen with the lens removed. Drag to move the source; scroll to zoom; double-click to reset the zoom. The blue curves are the caustics: when the source crosses one, a pair of images appears or disappears. For singular isothermal lenses the dashed curve is the cut, where a single image vanishes into the singular center.">Source plane</h2><span class="sub" id="sSub"></span></div>
+      <canvas id="cvS" aria-label="Source plane"></canvas>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><h2 title="The sky as seen through a telescope. Each sky pixel is traced back through the lens to the source plane and takes the surface brightness found there, so lensing changes the size and shape of the source and leaves the surface brightness unchanged. The blue curves are the critical curves, which map onto the caustics. Markers show the images of the source center, numbered in order of arrival: circle = minimum, diamond = saddle (mirror-reversed), triangle = maximum of the arrival time. Scroll to zoom about the pointer and double-click to reset the view; drag a subhalo (light dot) to move the clump.">Sky</h2><span class="sub" id="iSub"></span></div>
+      <canvas id="cvI" aria-label="Lensed sky"></canvas>
+    </section>
+
+  </div>
+
+  <div class="controls">
+    <section class="c-lens">
+      <h2 title="The mass distribution of the lens, in units of the Einstein radius. All four models are projected onto the sky (thin-lens approximation).">Lens</h2>
+      <div class="models" role="tablist">
+        <button id="mPoint" type="button" title="A point mass (a star, a planet, a black hole). Deflection falls as 1/r, so the lens always forms two images: one outside the Einstein ring and one inside, close to the mass.">Point mass</button>
+        <button id="mSIS" type="button" title="Singular isothermal sphere: surface density falling as 1/r, the simplest model of a galaxy (flat rotation curve). The deflection angle is the same at all radii. Two images, or one when the source lies more than one Einstein radius from the axis.">SIS</button>
+        <button id="mCored" type="button" title="Isothermal sphere with a flat core. The finite central density rounds off the top of the pole in the arrival-time surface, which adds a third, faint image at the center: lenses with no singularity always form an odd number of images.">Cored</button>
+        <button id="mEll" type="button" title="Isothermal ellipsoid plus an external shear from neighboring mass. Breaking the circular symmetry splits the point caustic into a diamond, and sources inside the diamond form four images (a quad), as in the Einstein Cross.">Ellipse + shear</button>
+      </div>
+      <div class="lensgrid">
+        <div class="ctl only-cored only-ell" title="Core radius s along the major axis, in units of the Einstein radius. Inside the core the surface density levels off at a finite value. A larger core weakens the lens; beyond s = 1 the lens forms no multiple images.">
+        <label for="sCore"><span>Core radius, <i>s</i></span><span class="val" id="vCore"></span></label>
+        <input type="range" id="sCore" min="0" max="1" step="0.005">
+      </div>
+        <div class="ctl only-ell" title="Ratio of the minor to the major axis of the mass distribution. q = 1 is round.">
+        <label for="sQ"><span>Axis ratio, <i>q</i></span><span class="val" id="vQ"></span></label>
+        <input type="range" id="sQ" min="0.3" max="1" step="0.005">
+      </div>
+        <div class="ctl only-ell" title="Direction of the major axis, measured counterclockwise from the horizontal.">
+        <label for="sPA"><span>Orientation</span><span class="val" id="vPA"></span></label>
+        <input type="range" id="sPA" min="0" max="180" step="1">
+      </div>
+        <div class="ctl only-ell" title="Strength of a uniform external shear, the tidal field of mass outside the lens galaxy (a group or a cluster). Typical values are 0.05 to 0.2.">
+        <label for="sG"><span>External shear, <i>γ</i></span><span class="val" id="vG"></span></label>
+        <input type="range" id="sG" min="0" max="0.3" step="0.005">
+      </div>
+        <div class="ctl only-ell" title="Direction along which the external shear stretches the images (measured counterclockwise from the horizontal; the shearing mass lies along the perpendicular).">
+        <label for="sGPA"><span>Shear angle</span><span class="val" id="vGPA"></span></label>
+        <input type="range" id="sGPA" min="0" max="180" step="1">
+      </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 title="Dark-matter subhalos in the lens galaxy, each a pseudo-Jaffe clump (Dalal &amp; Kochanek 2002) whose surface density falls as 1/r inside the truncation radius a and as 1/r³ outside, with a = √(b θ_E) set by tides at the Einstein ring. Clumps start at random positions near the Einstein ring, where the images form; drag any clump in the sky panel. Halos along the line of sight at other redshifts act in a similar way and are not modeled.">Subhalos</h2>
+      <div class="caserow" title="Switch the subhalos on and off to see what they change; Blink alternates the two every 0.75 s. The clumps stay in place, drawn hollow while switched off.">
+        <span class="seg sm"><button id="sOn" type="button">On</button><button id="sOff" type="button">Off</button></span>
+        <span class="btns"><button id="blink" class="ghost" type="button">Blink</button><button id="reshuffle" class="ghost" type="button" title="New random positions for the clumps (six if there were none).">Reshuffle</button></span>
+      </div>
+      <div class="ctl" title="Number of clumps, placed at random in the annulus 0.5-1.5 θ_E. Clumps keep their positions as the number changes.">
+        <label for="sN"><span>Number</span><span class="val" id="vN"></span></label>
+        <input type="range" id="sN" min="0" max="20" step="1">
+      </div>
+      <div class="ctl" title="Mass of each clump, for θ_E = 1″, a lens at z = 0.5 and a source at z = 2. Cold dark matter predicts many dark subhalos of 10⁶-10⁹ solar masses in a massive lens galaxy; the most massive host luminous satellite galaxies.">
+        <label for="sM"><span>Mass of each</span><span class="val" id="vM"></span></label>
+        <input type="range" id="sM" min="6" max="10" step="0.05">
+      </div>
+      <div id="readSub"></div>
+    </section>
+
+    <section>
+      <h2 title="The background source, drawn in the source plane at the true position. Drag in the source-plane panel to move the source.">Source</h2>
+      <div class="caserow" title="A uniform disk shows most clearly that lensing conserves surface brightness: each image has the color of the source. The galaxy is a smooth exponential disk with three bright knots.">
+        <span>Shape</span>
+        <span class="seg sm"><button id="tPt" type="button" title="A point source, such as a quasar accretion disk, far smaller than any clump: each image is drawn as the telescope's point-spread function with total flux |μ|.">Point</button><button id="tDisk" type="button">Disk</button><button id="tGal" type="button">Galaxy</button></span>
+      </div>
+      <div class="ctl only-ext" title="Radius of the source, in units of the Einstein radius (and in milliarcseconds for θ_E = 1″). A source larger than a clump's footprint averages over the clump's brightening and dimming, so the flux change shrinks as the source grows.">
+        <label for="sR"><span>Size</span><span class="val" id="vR"></span></label>
+        <input type="range" id="sR" min="-1.699" max="-0.301" step="0.005">
+      </div>
+      <div class="ctl only-ext" title="Tilt of the disk (or galaxy) toward the line of sight: 0° face-on, a circle; 90° edge-on, a thin ellipse of axis ratio 0.1, the thickness of a disk galaxy. The projected axis ratio is √(cos² i + 0.01 sin² i).">
+        <label for="sInc"><span>Inclination</span><span class="val" id="vInc"></span></label>
+        <input type="range" id="sInc" min="0" max="90" step="1">
+      </div>
+      <div class="ctl" title="Blur the sky with a Gaussian point-spread function of this full width at half maximum (arcsec, for θ_E = 1″); 0.1″ is roughly the resolution of the Hubble Space Telescope, 0.7″ good seeing on the ground. Lensing conserves surface brightness, so on the perfect sky magnification shows only as image area; once the point-spread function is wider than an image, the peak brightness of that image tracks its flux. Brightness is then scaled to the brightest image of the smooth lens, so switching the subhalos on and off compares like with like.">
+        <label for="sFW"><span>Telescope resolution</span><span class="val" id="vFW"></span></label>
+        <input type="range" id="sFW" min="-2.3" max="0" step="0.02">
+      </div>
+      <div class="rd" title="Position of the source center relative to the lens axis, in units of the Einstein radius."><span>Position, <i>β</i></span><b id="vB"></b></div>
+    </section>
+
+    <section>
+      <h2>Display</h2>
+      <label class="chk" title="Critical curves in the sky (where the magnification of a point source diverges) and the caustics they map onto in the source plane."><input type="checkbox" id="cCrit"> Critical curves</label>
+      <label class="chk" title="Markers at the images of the source center in the sky panel: circle = minimum, diamond = saddle, triangle = maximum of the arrival time, numbered in order of arrival. Switch the markers off to see small images unobstructed."><input type="checkbox" id="cMarks"> Image markers</label>
+      <label class="chk" title="Outline of the source at the true position, as the source would appear with the lens removed."><input type="checkbox" id="cUnl"> Unlensed source</label>
+      <label class="chk" title="Subhalo centers (light dots) and truncation radii (dotted circles) in the sky panel."><input type="checkbox" id="cSubs"> Subhalos</label>
+      <label class="chk" title="Contours of the surface density of the lens, at 0.5, 1, 2 and 4 times the critical density. Multiple images need a surface density above critical somewhere."><input type="checkbox" id="cMass"> Mass contours</label>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <p>Thin gravitational lenses in units of the Einstein radius θ<sub>E</sub>. The models are a point mass and the softened isothermal ellipsoid of Keeton &amp; Kochanek (1998), as given in Keeton (2001), plus an external shear. Images of the source center are found by mapping triangles of a polar grid in the sky through the lens equation and refining each candidate with Newton's method; the extended source is drawn by tracing each sky pixel back to the source plane. Time delays assume θ<sub>E</sub> = 1″, a lens at <i>z</i> = 0.5 and a source at <i>z</i> = 2 with the Planck 2018 cosmology, for which one unit of arrival time is 86 days; a point mass with this Einstein radius has 2.5 × 10<sup>11</sup> M<sub>☉</sub>, and a singular isothermal sphere a velocity dispersion of 234 km s<sup>−1</sup>.</p>
+  <p class="src">Hover over a panel title, a control or an image marker for an explanation.</p>
+</footer>
+
+<script src="physics.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
