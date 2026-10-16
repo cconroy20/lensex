@@ -546,20 +546,16 @@ function pxOf(b, x, y) {
 }
 const skyToPx = (x, y) => pxOf(boxI, x, y);
 const subsList = () => (EC ? EC.L.subs : []);
-// subhalos: truncation radius (dotted) and center; hollow while the subhalos are switched off
+// subhalos: a dot at each center, hollow while the subhalos are switched off; under the
+// pointer (or while dragged) a glow and a larger white dot mark the clump as movable
 function drawSubs(ctx, map, side, E) {
   if (!S.showSubs) return;
   subsList().forEach((c, k) => {
-    const [qx, qy] = map(c.x, c.y), ra = c.a / (2 * E) * side, hot = k === hs || k === dragSub;
-    if (hot) {                         // under the pointer: a glow, a solid truncation circle, a larger dot
+    const [qx, qy] = map(c.x, c.y), hot = k === hs || k === dragSub;
+    if (hot) {
       const g = ctx.createRadialGradient(qx, qy, 0, qx, qy, 16);
       g.addColorStop(0, "rgba(225,232,255,0.75)"); g.addColorStop(1, "rgba(225,232,255,0)");
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(qx, qy, 16, 0, 2 * Math.PI); ctx.fill();
-      ctx.lineWidth = 1.4; ctx.strokeStyle = "rgba(235,240,255,0.9)";
-      ctx.beginPath(); ctx.arc(qx, qy, ra, 0, 2 * Math.PI); ctx.stroke();
-    } else {
-      ctx.setLineDash([2, 3]); ctx.lineWidth = 1; ctx.strokeStyle = S.son ? C.sub : "rgba(214,222,255,0.22)";
-      ctx.beginPath(); ctx.arc(qx, qy, ra, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
     }
     ctx.beginPath(); ctx.arc(qx, qy, hot ? 5.5 : 3.6, 0, 2 * Math.PI);
     if (S.son || hot) { ctx.fillStyle = hot ? "#ffffff" : C.subDot; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = C.halo; ctx.stroke(); }
