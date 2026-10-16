@@ -35,6 +35,8 @@ the subhalos in the sky panel, where they live (they are in the lens plane, so t
 plane).
 A telescope-resolution slider blurs the sky with a Gaussian point-spread function (perfect to 1″ FWHM).
 
+The page credits its author in the footer: written by Claude (Opus 5.5), working in Claude Code with Charlie Conroy.
+
 ## Physics and assumptions
 
 - **Units**: angles in units of the Einstein radius θ_E; arrival time in units of
@@ -88,7 +90,9 @@ A telescope-resolution slider blurs the sky with a Gaussian point-spread functio
   switching the subhalos on and off compares like with like. Default: a point source at 0.05″.
 - **Color scale**: one ramp (navy → brown → orange → amber → cream), labeled by a colorbar in the sky panel header (decimal ticks, title "brightness", or "surface brightness" with a perfect telescope; the normalization is in the hover text).
   The stretch is logarithmic over three decades by default (a Lin | Log switch beside the colorbar); the source
-  plane uses the same stretch. Perfect telescope: surface brightness with the source peak = 1, the same scale in both
+  plane uses the same stretch. A two-handled "Color range" slider in the Display box sets the bottom and top of the
+  sky's scale (in decades about the default top, over seven decades; drag a handle or the span, double-click to
+  reset); the colorbar ticks follow the range. The source plane keeps the default range. Perfect telescope: surface brightness with the source peak = 1, the same scale in both
   panels, so a lensed image visibly keeps the source's colors. Blurred or point source: 1 = the brightest image of
   the smooth lens, top of scale 1.25. The log stretch brings up the demagnified central image of the default cored
   lens (|μ| = 0.09, ramp position 0.37), which the linear stretch leaves at 0.01.
@@ -123,7 +127,7 @@ A telescope-resolution slider blurs the sky with a Gaussian point-spread functio
   a clump center, residual 10⁻¹⁵) lie inside lenstronomy's search spacing (`min_distance` 0.001) around a singular
   center.
 
-`node uitest.js` drives the page in headless Chrome (85 checks): source dragging, the four models and their sliders,
+`node uitest.js` drives the page in headless Chrome (90 checks): source dragging, the four models and their sliders,
 source shapes and inclination (edge-on area 0.103 of face-on against 0.1), hover highlights and grab-dragging of the source and the clumps, display toggles, hover tooltips on each image marker (with the smooth-lens comparison), the
 subhalo controls (adding clumps, dragging a clump next to a saddle image: μ −1.24 against −2.37 smooth, reshuffle,
 sky zoom, clump positions in the URL hash), the on/off switch and Blink, the layout (two equal square canvases,

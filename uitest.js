@@ -90,7 +90,7 @@ function check(name, ok, detail) {
   const t0 = await imgs();
   check("default (cored lens, source near the axis): minimum, saddle, maximum", t0.join(",") === "min,saddle,max", t0.join(","));
   const Sd = await ev(`window.__lensex.S()`);
-  check("default: a point source seen at 0.05\" resolution", Sd.type === "pt" && Math.abs(Sd.fw - Math.log10(0.05)) < 1e-9 && /0\.05″ FWHM/.test(await ev(`document.getElementById("vFW").textContent`)));
+  check("default: a point source seen at 0.05\" resolution", Sd.type === "pt" && Math.abs(Sd.fw - Math.log10(0.05)) < 1e-9 && /^0\.05″$/.test(await ev(`document.getElementById("vFW").textContent`)));
   check("image markers are off by default", (await ev(`window.__lensex.S().marks`)) === false && !(await ev(`document.getElementById("cMarks").checked`)));
   // colorbar and stretch: log by default, three decades; the faint central image shows only in log
   {
@@ -131,6 +131,33 @@ function check(name, ok, detail) {
     await sleep(150);
     check("Esc closes the pop-up", (await ev(`document.getElementById("prof").hidden`)) === true);
   }
+  // the sky color range: drag the top handle down (brighter), then the bottom handle up (faint images vanish)
+  {
+    await scrollTo("#crDual");
+    const c3 = await ev(`window.__lensex.images().find(m => m.type === "max")`), c1 = await ev(`window.__lensex.images()[0]`);
+    const b1 = await ev(`window.__lensex.rampAt(${c1.x}, ${c1.y})`), b3 = await ev(`window.__lensex.rampAt(${c3.x}, ${c3.y})`);
+    const hiR = await rect("#crHi"), loR = await rect("#crLo"), tr = await rect("#crDual");
+    const perDec = tr.w / 7;                                     // the track spans 7 decades
+    await mouse("mousePressed", hiR.x + hiR.w / 2, hiR.y + hiR.h / 2);
+    for (let s = 1; s <= 4; s++) { await mouse("mouseMoved", hiR.x + hiR.w / 2 - perDec * 0.5 * s / 4, hiR.y + hiR.h / 2); await sleep(40); }
+    await mouse("mouseReleased", hiR.x + hiR.w / 2 - perDec * 0.5, hiR.y + hiR.h / 2); await sleep(200);
+    const S1r = await ev(`window.__lensex.S()`), a1 = await ev(`window.__lensex.rampAt(${c1.x}, ${c1.y})`);
+    check("color range: lowering the top makes the bright image brighter on the ramp", Math.abs(S1r.chi + 0.5) < 0.05 && a1 > b1,
+          `top ${S1r.chi.toFixed(2)} decades; ramp ${b1.toFixed(2)} -> ${a1.toFixed(2)}; readout ${await ev(`document.getElementById("vCR").textContent`)}`);
+    await mouse("mousePressed", loR.x + loR.w / 2, loR.y + loR.h / 2);
+    for (let s = 1; s <= 4; s++) { await mouse("mouseMoved", loR.x + loR.w / 2 + perDec * 1.6 * s / 4, loR.y + loR.h / 2); await sleep(40); }
+    await mouse("mouseReleased", loR.x + loR.w / 2 + perDec * 1.6, loR.y + loR.h / 2); await sleep(200);
+    const S2r = await ev(`window.__lensex.S()`), a3 = await ev(`window.__lensex.rampAt(${c3.x}, ${c3.y})`);
+    check("color range: raising the bottom hides the faint central image", S2r.clo > -1.6 && a3 === 0 && b3 > 0.3, `bottom ${S2r.clo.toFixed(2)} decades; ramp ${b3.toFixed(2)} -> ${a3}`);
+    const ticks = await ev(`[...document.querySelectorAll("#cbTicks .tk")].map(t => t.textContent).filter(Boolean).join(" ")`);
+    check("colorbar ticks follow the range", ticks.length > 0 && !/0\.001/.test(ticks), ticks);
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: tr.x + 4, y: tr.y + tr.h / 2, button: "left", clickCount: 2 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: tr.x + 4, y: tr.y + tr.h / 2, button: "left", clickCount: 2 });
+    await sleep(200);
+    const S3r = await ev(`window.__lensex.S()`);
+    check("double-click resets the color range", S3r.clo === -3 && S3r.chi === 0);
+  }
+  check("footer credits Claude", /written by Claude \(Opus 5\.5\)/.test(await ev(`document.querySelector("footer").textContent`)));
   check("no image count on the sky panel", (await ev(`document.getElementById("iSub").textContent`)) === "");
   check("two panels only (source plane and sky)", (await ev(`document.querySelectorAll(".panel").length`)) === 2 && (await ev(`document.getElementById("cvT")`)) === null);
   // layout: the two panels and all the controls fit in one screen, with no scrolling
@@ -410,7 +437,7 @@ function check(name, ok, detail) {
   await setRange("#sFW", -1);
   const sk = await ev(`window.__lensex.sky()`);
   check("telescope view: blurring an extended source conserves the light", Math.abs(sk.sum / sk.rawSum - 1) < 0.02, `blurred/ideal ${(sk.sum / sk.rawSum).toFixed(4)}`);
-  check("resolution readout", /0\.1″ FWHM/.test(await ev(`document.getElementById("vFW").textContent`)), await ev(`document.getElementById("vFW").textContent`));
+  check("resolution readout", /^0\.1″$/.test(await ev(`document.getElementById("vFW").textContent`)), await ev(`document.getElementById("vFW").textContent`));
   await shot("disk_psf.png");
   await dragSource(0.05, 0.02, 0.1, 0.04, 4);
   const fBlur = await ev(`window.__lensex.frameMs()`);

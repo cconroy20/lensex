@@ -98,7 +98,7 @@
         <label for="sInc"><span>Inclination</span><span class="val" id="vInc"></span></label>
         <input type="range" id="sInc" min="0" max="90" step="1">
       </div>
-      <div class="ctl" title="Blur the sky with a Gaussian point-spread function of this full width at half maximum (arcsec, for θ_E = 1″); 0.1″ is roughly the resolution of the Hubble Space Telescope, 0.7″ good seeing on the ground. Lensing conserves surface brightness, so on the perfect sky magnification shows only as image area; once the point-spread function is wider than an image, the peak brightness of that image tracks its flux. Brightness is then scaled to the brightest image of the smooth lens, so switching the subhalos on and off compares like with like.">
+      <div class="ctl" title="Blur the sky with a Gaussian point-spread function of this full width at half maximum (FWHM, in arcsec for θ_E = 1″); 0.1″ is roughly the resolution of the Hubble Space Telescope, 0.7″ good seeing on the ground. Lensing conserves surface brightness, so on the perfect sky magnification shows only as image area; once the point-spread function is wider than an image, the peak brightness of that image tracks its flux. Brightness is then scaled to the brightest image of the smooth lens, so switching the subhalos on and off compares like with like.">
         <label for="sFW"><span>Telescope resolution</span><span class="val" id="vFW"></span></label>
         <input type="range" id="sFW" min="-2.3" max="0" step="0.02">
       </div>
@@ -111,13 +111,19 @@
       <label class="chk" title="Outline of the source at the true position, as the source would appear with the lens removed."><input type="checkbox" id="cUnl"> Unlensed source</label>
       <label class="chk" title="Subhalo centers (light dots) in the sky panel; drag a dot to move the clump."><input type="checkbox" id="cSubs"> Subhalos</label>
       <label class="chk" title="Contours of the surface density of the lens, at 0.5, 1, 2 and 4 times the critical density. Multiple images need a surface density above critical somewhere."><input type="checkbox" id="cMass"> Mass contours</label>
+      <div class="ctl crctl" title="Range of the sky panel's color scale, in the units of the colorbar: drag either handle, or drag the shaded span to shift the range; double-click to reset (three decades below the top of the scale).">
+        <label><span>Color range</span><span class="val" id="vCR"></span></label>
+        <div class="dual" id="crDual"><div class="trk"></div><div class="fill" id="crFill"></div><div class="h" id="crLo"></div><div class="h" id="crHi"></div></div>
+      </div>
     </section>
   </div>
 </main>
 
 <footer>
-  <p>Thin gravitational lenses in units of the Einstein radius θ<sub>E</sub>. The models are a point mass and the softened isothermal ellipsoid of Keeton &amp; Kochanek (1998), as given in Keeton (2001), plus an external shear. Images of the source center are found by mapping triangles of a polar grid in the sky through the lens equation and refining each candidate with Newton's method; the extended source is drawn by tracing each sky pixel back to the source plane. Time delays assume θ<sub>E</sub> = 1″, a lens at <i>z</i> = 0.5 and a source at <i>z</i> = 2 with the Planck 2018 cosmology, for which one unit of arrival time is 86 days; a point mass with this Einstein radius has 2.5 × 10<sup>11</sup> M<sub>☉</sub>, and a singular isothermal sphere a velocity dispersion of 234 km s<sup>−1</sup>.</p>
-  <p class="src">Hover over a panel title, a control or an image marker for an explanation.</p>
+  <p>Thin gravitational lenses, with angles in units of the Einstein radius θ<sub>E</sub>. The lens models are a point mass and the softened isothermal ellipsoid of Keeton &amp; Kochanek (1998), as given in Keeton (2001), which includes the singular and cored isothermal spheres, plus an external shear. Subhalos are pseudo-Jaffe clumps (Dalal &amp; Kochanek 2002), tidally truncated at <i>a</i> = √(<i>b</i> θ<sub>E</sub>), or truncated NFW clumps (Baltz, Marshall &amp; Oguri 2009) of the same mass and truncation radius, with the concentration of a cold-dark-matter halo (Duffy et al. 2008). Images of the source center are found by mapping triangles of polar grids through the lens equation, with a finer grid around each subhalo, and refining each candidate with Newton's method. The sky is drawn by tracing each pixel back to the source plane, which conserves surface brightness, then blurred with a Gaussian point-spread function of the chosen resolution; a point source appears as one point-spread function per image, with flux |μ|.</p>
+  <p>Delays and physical scales assume θ<sub>E</sub> = 1″, a lens at <i>z</i> = 0.5 and a source at <i>z</i> = 2 in the Planck 2018 cosmology: 1 θ<sub>E</sub> = 6.3 kpc at the lens, one unit of arrival time is 86 days, a point mass with this Einstein radius has 2.5 × 10<sup>11</sup> M<sub>☉</sub>, and a singular isothermal sphere a velocity dispersion of 234 km s<sup>−1</sup>. The calculations are checked against analytic results and against the lenstronomy package.</p>
+  <p>This page was written by Claude (Opus 5.5), working in Claude Code with Charlie Conroy.</p>
+  <p class="src">Drag the source or a subhalo to move it, drag empty space to pan, scroll to zoom, and double-click to reset the view. Hover over a panel title, a control or an image marker for an explanation.</p>
 </footer>
 
 <div id="prof" class="modal" hidden>

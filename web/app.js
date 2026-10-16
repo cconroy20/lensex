@@ -27,10 +27,10 @@ function defaults() {
   return { model: "cored", core: 0.1, coreE: 0, q: 0.7, pa: 30, g: 0.08, gpa: 120,
            bx: 0.2, by: 0.08, type: "pt", R: 0.08, inc: 0,
            crit: true, marks: false, unl: false, mass: false, zs: 1.25, csx: 0, csy: 0,
-           nsub: 0, sprof: "pj", lm: 9, seed: 1, subs: [], showSubs: true, zi: EI, cix: 0, ciy: 0, son: true, fw: FW_DEF, slog: true };
+           nsub: 0, sprof: "pj", lm: 9, seed: 1, subs: [], showSubs: true, zi: EI, cix: 0, ciy: 0, son: true, fw: FW_DEF, slog: true, clo: -3, chi: 0 };
 }
 let S = defaults();
-const NUMKEYS = ["core", "coreE", "q", "pa", "g", "gpa", "bx", "by", "R", "inc", "zs", "csx", "csy",
+const NUMKEYS = ["core", "coreE", "q", "pa", "g", "gpa", "bx", "by", "R", "inc", "zs", "csx", "csy", "clo", "chi",
                  "nsub", "lm", "seed", "zi", "cix", "ciy", "fw"];
 
 function mainSpec() {
@@ -179,10 +179,18 @@ function ramp(stops, n) {
 // source brightness: navy sky through amber to cream
 const SRC_STOPS = [[0, "#0e1729"], [0.3, "#4f3328"], [0.62, "#d07f2c"], [0.85, "#FFB547"], [1, "#FFF1D0"]];
 const LUT_SRC = ramp(SRC_STOPS, 256);
-// The display stretch: brightness I in units of the top of the scale onto 0..1 of the
-// ramp, linearly or logarithmically over DEC decades.
-const DEC = 3;
-const stretch = I => clamp(S.slog ? (I > 0 ? 1 + Math.log10(I) / DEC : 0) : I, 0, 1);
+// The display stretch: brightness I, in units of the default top of the scale, onto 0..1 of
+// the ramp between 10^lo and 10^hi, linearly or logarithmically.  The source plane always uses
+// the default range (DEC decades below the top); the sky uses the color-range slider
+// (S.clo, S.chi, decades relative to the default top).
+const DEC = 3, CR_DOM = [-6, 1];
+function stretchRange(I, lo, hi) {
+  if (S.slog) return clamp(I > 0 ? (Math.log10(I) - lo) / (hi - lo) : 0, 0, 1);
+  const a = Math.pow(10, lo), b = Math.pow(10, hi);
+  return clamp((I - a) / (b - a), 0, 1);
+}
+const stretch = I => stretchRange(I, -DEC, 0);                // the source plane
+const stretchSky = I => stretchRange(I, S.clo, S.chi);        // the sky panel
 // ------------------------------------------------------------------ the source
 // brightness 0..1 at offset (dx, dy) from the source center, in theta_E
 // The extended source is a uniform thin disk seen at inclination S.inc (0 = face-on); the
@@ -521,21 +529,63 @@ function drawSource() {
 // brightness with the source peak = 1; with blurring (or a point source) brightness relative
 // to the brightest point of the smooth lens's sky, whose top of scale is HEAD = 1.25.
 const CBAR_CSS = "linear-gradient(to right, " + SRC_STOPS.map(([t, c]) => `${c} ${(100 * t).toFixed(0)}%`).join(", ") + ")";
+// a decimal label for a tick value
+function tickLab(t) {
+  if (t === 0) return "0";
+  const e = Math.floor(Math.log10(Math.abs(t)) + 1e-9);
+  return e >= 0 ? String(+t.toPrecision(3)) : t.toFixed(Math.min(8, -e + (Math.abs(t / Math.pow(10, e) - Math.round(t / Math.pow(10, e))) > 1e-6 ? 1 : 0)));
+}
 function drawColorbar() {
   const top = psfOn() ? HEAD : 1, ticks = [];
+  const lo = top * Math.pow(10, S.clo), hi = top * Math.pow(10, S.chi);     // the range, in colorbar units
   if (S.slog) {
-    for (let e = Math.ceil(Math.log10(top) - DEC); e <= Math.floor(Math.log10(top) + 1e-9); e++) {
-      const t = Math.pow(10, e);
-      ticks.push([1 + Math.log10(t / top) / DEC, e >= 0 ? String(t) : t.toFixed(-e)]);
-    }
+    const span = Math.log10(hi / lo), pos = t => Math.log10(t / lo) / span;
+    const steps = span > 1.2 ? [1] : span > 0.5 ? [1, 2, 5] : [1, 1.5, 2, 3, 5, 7];
+    for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++)
+      for (const m of steps) { const t = m * Math.pow(10, e); if (t >= lo * 0.999 && t <= hi * 1.001) ticks.push([pos(t), tickLab(t)]); }
+    if (span > 4.5) for (let k = ticks.length - 1; k >= 0; k--) if (Math.round(Math.log10(+ticks[k][1] || 1)) % 2 && ticks.length > 4) ticks[k][1] = "";
   } else {
-    for (let t = 0; t <= top + 1e-9; t += 0.25) ticks.push([t / top, t % 0.5 === 0 ? String(t) : ""]);
+    // about three labels; a bottom within 1% of zero is labeled as 0
+    const st = tickStep(hi - lo), pos = t => clamp((t - lo) / (hi - lo), 0, 1), t0 = lo < 0.01 * hi ? 0 : Math.ceil(lo / st) * st;
+    for (let t = t0; t <= hi * 1.0001; t += st) ticks.push([pos(t), tickLab(+t.toPrecision(6))]);
   }
   // labels at the ends of the bar are aligned inward, so they stay within the bar
   $("cbTicks").innerHTML = ticks.map(([v, l]) => `<span class="tk${v < 0.06 ? " lo" : v > 0.94 ? " hi" : ""}" style="left:${(100 * v).toFixed(2)}%">${l}</span>`).join("");
   $("cbGrad").style.background = CBAR_CSS;
   $("cbLab").textContent = psfOn() ? "brightness" : "surface brightness";
   $("stLin").setAttribute("aria-pressed", !S.slog); $("stLog").setAttribute("aria-pressed", S.slog);
+  syncRange();
+}
+// the color-range slider: two handles on a track spanning CR_DOM decades about the default top
+function syncRange() {
+  const f = v => (100 * (v - CR_DOM[0]) / (CR_DOM[1] - CR_DOM[0])).toFixed(2) + "%";
+  $("crLo").style.left = f(S.clo); $("crHi").style.left = f(S.chi);
+  $("crFill").style.left = f(S.clo); $("crFill").style.width = `calc(${f(S.chi)} - ${f(S.clo)})`;
+  const top = psfOn() ? HEAD : 1;
+  $("vCR").textContent = `${tickLab(+(top * Math.pow(10, S.clo)).toPrecision(2))}–${tickLab(+(top * Math.pow(10, S.chi)).toPrecision(2))}`;
+}
+{
+  let drag = null;
+  const val = ev => { const r = $("crDual").getBoundingClientRect(); return CR_DOM[0] + clamp((ev.clientX - r.left) / r.width, 0, 1) * (CR_DOM[1] - CR_DOM[0]); };
+  const start = (which, ev) => { ev.preventDefault(); drag = { which, v0: val(ev), lo: S.clo, hi: S.chi }; $("crDual").setPointerCapture(ev.pointerId); };
+  $("crLo").addEventListener("pointerdown", ev => start("lo", ev));
+  $("crHi").addEventListener("pointerdown", ev => start("hi", ev));
+  $("crFill").addEventListener("pointerdown", ev => start("both", ev));
+  $("crDual").addEventListener("pointermove", ev => {
+    if (!drag) return;
+    const v = val(ev), gap = 0.2;
+    if (drag.which === "lo") S.clo = +clamp(v, CR_DOM[0], S.chi - gap).toFixed(3);
+    else if (drag.which === "hi") S.chi = +clamp(v, S.clo + gap, CR_DOM[1]).toFixed(3);
+    else {
+      const w = drag.hi - drag.lo, d = clamp(v - drag.v0, CR_DOM[0] - drag.lo, CR_DOM[1] - drag.hi);
+      S.clo = +(drag.lo + d).toFixed(3); S.chi = +(drag.lo + d + w).toFixed(3);
+    }
+    saveHash(); redraw();
+  });
+  const end = () => { drag = null; };
+  $("crDual").addEventListener("pointerup", end);
+  $("crDual").addEventListener("pointercancel", end);
+  $("crDual").addEventListener("dblclick", () => { S.clo = -DEC; S.chi = 0; saveHash(); redraw(); });
 }
 
 let boxI = null, skyFlux = { lensed: 0, unlensed: 0 }, skyLast = null;
@@ -585,7 +635,7 @@ function drawSky() {
   const sb = psfOn() ? skyBright(N, cur, IMG, raw) : { arr: raw, M: N };
   const scale = psfOn() ? 1 / (HEAD * brightRef(N)) : 1, M = sb.M, img = new ImageData(M, M), px = img.data;
   for (let n = 0; n < M * M; n++) {
-    const k = 3 * Math.round(stretch(sb.arr[n] * scale) * 255), m = 4 * n;
+    const k = 3 * Math.round(stretchSky(sb.arr[n] * scale) * 255), m = 4 * n;
     px[m] = LUT_SRC[k]; px[m + 1] = LUT_SRC[k + 1]; px[m + 2] = LUT_SRC[k + 2]; px[m + 3] = 255;
   }
   skyLast = { arr: sb.arr, M, scale, cx, cy, E, rawSum: fl, sum: sb.arr.reduce((a, v) => a + v, 0) * (N / M) * (N / M) };
@@ -688,7 +738,7 @@ const SL = {
   sInc: { get: () => S.inc, set: v => { S.inc = v; },
           fmt: v => `${v.toFixed(0)}°` + (v < 0.5 ? " (face-on)" : v > 89.5 ? " (edge-on)" : "") },
   sFW: { get: () => S.fw, set: v => { S.fw = v; },
-         fmt: v => (v > FW_OFF ? `${num(Math.pow(10, v), 2)}″ FWHM` : isPt() ? "0.01″ (minimum)" : "perfect") },
+         fmt: v => (v > FW_OFF ? `${num(Math.pow(10, v), 2)}″` : isPt() ? "0.01″ (min)" : "perfect") },
 };
 const VAL = { sCore: "vCore", sQ: "vQ", sPA: "vPA", sG: "vG", sGPA: "vGPA", sR: "vR", sInc: "vInc", sFW: "vFW" };
 function syncControls() {
@@ -1006,7 +1056,7 @@ window.__lensex = { S: () => S, images: () => IMG, images0: () => IMG0, imagesC:
                                        return q.arr[j * q.M + i]; },
                     // position on the color ramp (0..1) of the sky at (x, y), after the stretch
                     rampAt: (x, y) => { const q = skyLast, i = Math.floor((x - q.cx + q.E) / (2 * q.E) * q.M), j = Math.floor((q.cy + q.E - y) / (2 * q.E) * q.M);
-                                        return stretch(q.arr[j * q.M + i] * q.scale); },
+                                        return stretchSky(q.arr[j * q.M + i] * q.scale); },
                     // displayed sky light summed within radius r of (x, y), in units of the full-field pixel
                     skySum: (x, y, r) => { const q = skyLast, d = 2 * q.E / q.M; let t = 0;
                                            for (let j = 0; j < q.M; j++) for (let i = 0; i < q.M; i++) {
