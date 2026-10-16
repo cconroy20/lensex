@@ -96,6 +96,20 @@ footer{padding:6px 22px 34px;font-size:.93rem;color:var(--muted);line-height:1.5
 footer p{margin:.5em 0;max-width:110ch}
 .src{font-size:.86rem}
 
+/* colorbar in the sky panel header: stretch switch, gradient with tick marks and labels, title */
+.ph{height:40px;align-items:center;flex-wrap:nowrap}
+.ph h2{margin:0}
+.cbrow{display:flex;align-items:flex-start;gap:12px;margin-left:auto}
+.cbar{position:relative;width:170px;height:27px;margin-top:3px}
+#cbGrad{height:9px;border-radius:2px;border:1px solid var(--line)}
+#cbTicks{position:relative;height:17px}
+#cbTicks .tk{position:absolute;top:0;transform:translateX(-50%);padding-top:5px;white-space:nowrap;
+  font-size:.74rem;line-height:1;color:#3b3733;font-variant-numeric:tabular-nums}
+#cbTicks .tk::before{content:"";position:absolute;left:50%;top:0;width:1px;height:4px;background:#6a6560}
+#cbTicks .tk.lo{transform:none} #cbTicks .tk.lo::before{left:0}
+#cbTicks .tk.hi{transform:translateX(-100%)} #cbTicks .tk.hi::before{left:auto;right:0}
+.cblab{font-size:.8rem;color:var(--muted);line-height:1;white-space:nowrap;margin-top:3px}
+
 @media (max-width:1180px){ .controls{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width:640px){ .models{flex-wrap:wrap} }
 @media (max-width:640px){
@@ -116,13 +130,3 @@ footer p{margin:.5em 0;max-width:110ch}
 .legend[hidden]{display:none}
 .caserow .btns{display:flex;gap:6px}
 
-/* colorbar in the sky panel header: stretch switch, gradient with ticks, two-line label */
-.ph{height:40px;align-items:center;flex-wrap:nowrap}
-.ph h2{margin:0}
-.cbrow{display:flex;align-items:flex-start;gap:10px;margin-left:auto}
-.cbar{position:relative;width:150px;height:24px;margin-top:2px}
-#cbGrad{height:9px;border-radius:2px;border:1px solid var(--line)}
-#cbTicks{position:relative;height:13px;font-size:.74rem;color:#3b3733}
-#cbTicks .tk{position:absolute;top:2px;transform:translateX(-50%);white-space:nowrap;line-height:1}
-#cbTicks .tk::before{content:"";position:absolute;left:50%;top:-4px;width:1px;height:3px;background:var(--muted)}
-.cblab{font-size:.76rem;color:var(--muted);line-height:1.2;white-space:nowrap}

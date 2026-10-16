@@ -73,7 +73,7 @@ A telescope-resolution slider blurs the sky with a Gaussian point-spread functio
   field. A point source is drawn as one PSF per image with flux |μ| from the image finder (exact; minimum FWHM
   0.01″). The display scale is fixed by the brightest point of the smooth lens's blurred sky (with 25% headroom), so
   switching the subhalos on and off compares like with like. Default: a point source at 0.05″.
-- **Color scale**: one ramp (navy → brown → orange → amber → cream), labeled by a colorbar in the sky panel header.
+- **Color scale**: one ramp (navy → brown → orange → amber → cream), labeled by a colorbar in the sky panel header (decimal ticks, title "brightness", or "surface brightness" with a perfect telescope; the normalization is in the hover text).
   The stretch is logarithmic over three decades by default (a Lin | Log switch beside the colorbar); the source
   plane uses the same stretch. Perfect telescope: surface brightness with the source peak = 1, the same scale in both
   panels, so a lensed image visibly keeps the source's colors. Blurred or point source: 1 = the brightest image of

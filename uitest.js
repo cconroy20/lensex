@@ -92,8 +92,9 @@ function check(name, ok, detail) {
   // colorbar and stretch: log by default, three decades; the faint central image shows only in log
   {
     const cb = await ev(`[...document.querySelectorAll("#cbTicks .tk")].map(t => t.textContent).filter(Boolean).join(" ")`);
-    check("colorbar: log stretch by default, ticks 10^-2 0.1 1, labeled", (await ev(`window.__lensex.S().slog`)) === true && cb === "10−2 0.1 1" &&
-          /brightest image = 1/.test(await ev(`document.getElementById("cbLab").textContent`)), cb);
+    const lab = await ev(`document.getElementById("cbLab").textContent`);
+    check("colorbar: log stretch by default, ticks 0.01 0.1 1, labeled \"brightness\"", (await ev(`window.__lensex.S().slog`)) === true && cb === "0.01 0.1 1" && lab === "brightness",
+          `${cb} | ${lab}`);
     const c3 = await ev(`window.__lensex.images().find(m => m.type === "max")`);
     const vLog = await ev(`window.__lensex.rampAt(${c3.x}, ${c3.y})`);
     await clickSel("#stLin");

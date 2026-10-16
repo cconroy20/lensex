@@ -527,14 +527,15 @@ function drawColorbar() {
   if (S.slog) {
     for (let e = Math.ceil(Math.log10(top) - DEC); e <= Math.floor(Math.log10(top) + 1e-9); e++) {
       const t = Math.pow(10, e);
-      ticks.push([1 + Math.log10(t / top) / DEC, e === 0 ? "1" : e === -1 ? "0.1" : "10<sup>" + String(e).replace("-", "−") + "</sup>"]);
+      ticks.push([1 + Math.log10(t / top) / DEC, e >= 0 ? String(t) : t.toFixed(-e)]);
     }
   } else {
     for (let t = 0; t <= top + 1e-9; t += 0.25) ticks.push([t / top, t % 0.5 === 0 ? String(t) : ""]);
   }
-  $("cbTicks").innerHTML = ticks.map(([v, l]) => `<span class="tk" style="left:${(100 * v).toFixed(2)}%">${l}</span>`).join("");
+  // labels at the ends of the bar are aligned inward, so they stay within the bar
+  $("cbTicks").innerHTML = ticks.map(([v, l]) => `<span class="tk${v < 0.06 ? " lo" : v > 0.94 ? " hi" : ""}" style="left:${(100 * v).toFixed(2)}%">${l}</span>`).join("");
   $("cbGrad").style.background = CBAR_CSS;
-  $("cbLab").innerHTML = psfOn() ? "brightness<br>brightest image = 1" : "surface brightness<br>source peak = 1";
+  $("cbLab").textContent = psfOn() ? "brightness" : "surface brightness";
   $("stLin").setAttribute("aria-pressed", !S.slog); $("stLog").setAttribute("aria-pressed", S.slog);
 }
 
